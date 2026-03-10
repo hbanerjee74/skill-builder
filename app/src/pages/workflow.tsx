@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useBlocker, useNavigate } from "@tanstack/react-router";
 import { type SaveStatus } from "@/components/clarifications-editor";
-import { type ClarificationsFile, parseClarifications } from "@/lib/clarifications-types";
+import { type ClarificationsFile, type Note, parseClarifications } from "@/lib/clarifications-types";
 import {
   Play,
   AlertCircle,
   RotateCcw,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -36,6 +37,9 @@ import {
   saveWorkflowState,
   readFile,
   writeFile,
+  getContextFileContent,
+  getClarificationsContent,
+  saveClarificationsContent,
   cleanupSkillSidecar,
   acquireLock,
   releaseLock,
@@ -44,6 +48,9 @@ import {
   getDisabledSteps,
   runAnswerEvaluator,
   logGateDecision,
+  materializeAnswerEvaluationOutput,
+  materializeWorkflowStepOutput,
+  navigateBackToStepDb,
   type AnswerEvaluation,
 } from "@/lib/tauri";
 import { TransitionGateDialog, type GateVerdict } from "@/components/transition-gate-dialog";
@@ -61,9 +68,9 @@ interface StepConfig {
 }
 
 const STEP_CONFIGS: Record<number, StepConfig> = {
-  0: { type: "agent", outputFiles: ["context/research-plan.md", "context/clarifications.json"], model: "sonnet", clarificationsEditable: true },
+  0: { type: "agent", outputFiles: ["context/clarifications.json"], model: "sonnet", clarificationsEditable: true },
   1: { type: "agent", outputFiles: ["context/clarifications.json"], model: "sonnet", clarificationsEditable: true },
-  2: { type: "reasoning", outputFiles: ["context/decisions.md"], model: "opus" },
+  2: { type: "reasoning", outputFiles: ["context/decisions.json"], model: "opus" },
   3: { type: "agent", outputFiles: ["skill/SKILL.md", "skill/references/"], model: "sonnet" },
 };
 
@@ -328,7 +335,7 @@ export default function WorkflowPage() {
 
     acquireLock(skillName).catch((err) => {
       if (mounted) {
-        toast.error(`Could not lock skill: ${err instanceof Error ? err.message : String(err)}`);
+        toast.error(`Could not lock skill: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity });
         navigate({ to: "/" });
       }
     });
@@ -350,23 +357,31 @@ export default function WorkflowPage() {
   useEffect(() => {
     const stepStatus = steps[currentStep]?.status;
 
-    if (stepStatus === "error" && skillName && skillsPath) {
+    if (stepStatus === "error" && skillName) {
       const cfg = STEP_CONFIGS[currentStep];
       const firstOutput = cfg?.outputFiles?.[0];
       if (firstOutput) {
-        const skillsRelative = firstOutput.startsWith("skill/")
-          ? firstOutput.slice("skill/".length)
-          : firstOutput;
-        readFile(`${skillsPath}/${skillName}/${skillsRelative}`)
-          .then((content) => setErrorHasArtifacts(!!content))
-          .catch(() => setErrorHasArtifacts(false));
+        if (firstOutput.startsWith("context/") && workspacePath) {
+          getContextFileContent(skillName, workspacePath, firstOutput.slice("context/".length))
+            .then((content) => setErrorHasArtifacts(!!content))
+            .catch(() => setErrorHasArtifacts(false));
+        } else if (skillsPath) {
+          const skillsRelative = firstOutput.startsWith("skill/")
+            ? firstOutput.slice("skill/".length)
+            : firstOutput;
+          readFile(`${skillsPath}/${skillName}/${skillsRelative}`)
+            .then((content) => setErrorHasArtifacts(!!content))
+            .catch(() => setErrorHasArtifacts(false));
+        } else {
+          setErrorHasArtifacts(false);
+        }
       } else {
         setErrorHasArtifacts(false);
       }
     } else {
       setErrorHasArtifacts(false);
     }
-  }, [currentStep, steps, skillsPath, skillName]);
+  }, [currentStep, steps, skillsPath, workspacePath, skillName]);
 
   // Debounced SQLite persistence — saves workflow state at most once per 300ms
   // instead of firing synchronously on every step/status change.
@@ -402,15 +417,15 @@ export default function WorkflowPage() {
   }, [steps, currentStep, skillName, purpose, hydrated]);
 
   // Load clarifications file when viewing a completed clarifications-editable step.
-  // skills_path is required — no workspace fallback.
+  // Context files are backend-owned under workspace path.
   useEffect(() => {
     const currentStepStatus = steps[currentStep]?.status;
-    if (!stepConfig?.clarificationsEditable || currentStepStatus !== "completed" || !skillsPath) {
+    if (!stepConfig?.clarificationsEditable || currentStepStatus !== "completed" || !workspacePath) {
       setReviewContent(null);
       return;
     }
 
-    readFile(`${skillsPath}/${skillName}/context/clarifications.json`)
+    getClarificationsContent(skillName, workspacePath)
       .then((content) => {
         setReviewContent(content ?? null);
         setClarificationsData(parseClarifications(content ?? null));
@@ -422,10 +437,10 @@ export default function WorkflowPage() {
       .finally(() => {
         setEditorDirty(false);
       });
-  }, [currentStep, steps, stepConfig?.clarificationsEditable, skillsPath, skillName]);
+  }, [currentStep, steps, stepConfig?.clarificationsEditable, workspacePath, skillName]);
 
   // Advance to next step helper
-  const [pendingAutoStart, setPendingAutoStart] = useState(false);
+  const [pendingAutoStartStep, setPendingAutoStartStep] = useState<number | null>(null);
 
   /** After resetting to a step, auto-start if it's an agent step in update mode. */
   const isAgentType = stepConfig?.type === "agent" || stepConfig?.type === "reasoning";
@@ -433,13 +448,15 @@ export default function WorkflowPage() {
   const autoStartAfterReset = (stepId: number) => {
     const cfg = STEP_CONFIGS[stepId];
     if ((cfg?.type === "agent" || cfg?.type === "reasoning") && !useWorkflowStore.getState().reviewMode) {
-      setPendingAutoStart(true);
+      setPendingAutoStartStep(stepId);
     }
   };
 
   const advanceToNextStep = useCallback(() => {
+    const { gateLoading: gateLoadingNow, disabledSteps: disabled } = useWorkflowStore.getState();
+    // Transition gate owns progression while answer analysis is running.
+    if (gateLoadingNow || gateAgentIdRef.current) return;
     if (currentStep >= steps.length - 1) return;
-    const { disabledSteps: disabled } = useWorkflowStore.getState();
     const nextStep = currentStep + 1;
 
     // Don't advance if the next step is disabled (scope too broad)
@@ -448,20 +465,26 @@ export default function WorkflowPage() {
     setCurrentStep(nextStep);
 
     // All steps are agent or reasoning — auto-start
-    setPendingAutoStart(true);
+    setPendingAutoStartStep(nextStep);
   }, [currentStep, steps, setCurrentStep]);
 
   // Auto-start agent/reasoning steps:
   // 1. When advancing from a completed step (pendingAutoStart set by advanceToNextStep)
   // 2. On initial page load when step hasn't started yet
   useEffect(() => {
-    if (!pendingAutoStart) return;
+    if (pendingAutoStartStep === null) return;
+    if (pendingAutoStartStep !== currentStep) return;
     if (!isAgentType) return;
     if (isRunning) return;
-    setPendingAutoStart(false);
+    if (gateLoading || gateAgentIdRef.current) return;
+    if (steps[currentStep]?.status !== "pending") {
+      setPendingAutoStartStep(null);
+      return;
+    }
+    setPendingAutoStartStep(null);
     handleStartAgentStep();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingAutoStart, currentStep]);
+  }, [pendingAutoStartStep, currentStep, steps, isRunning, isAgentType, gateLoading]);
 
   // Auto-start when switching from Review → Update mode on a pending agent step.
   // Does NOT fire on initial page load (new skills show a Start button per AC 1).
@@ -476,9 +499,9 @@ export default function WorkflowPage() {
     if (!workspacePath) return;
     const status = steps[currentStep]?.status;
     if (status && status !== "pending") return;
-    if (isRunning || pendingAutoStart) return;
+    if (isRunning || pendingAutoStartStep !== null || gateLoading) return;
     console.log(`[workflow] Auto-starting step ${currentStep} (review→update toggle)`);
-    setPendingAutoStart(true);
+    setPendingAutoStartStep(currentStep);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated, reviewMode]);
 
@@ -503,17 +526,33 @@ export default function WorkflowPage() {
   const activeRun = activeAgentId ? runs[activeAgentId] : null;
   const activeRunStatus = activeRun?.status;
 
+  const extractStructuredResultPayload = useCallback((agentId: string): unknown | null => {
+    const run = useAgentStore.getState().runs[agentId];
+    if (!run) return null;
+    for (let i = run.messages.length - 1; i >= 0; i -= 1) {
+      const msg = run.messages[i];
+      if (msg.type !== "result") continue;
+      const raw = msg.raw as Record<string, unknown>;
+      // Prefer structured_output (new SDK behavior: text in result, JSON in structured_output).
+      // Fall back to result for older SDK versions where result held the JSON object directly.
+      if ("structured_output" in raw && raw.structured_output != null) return raw.structured_output;
+      if ("result" in raw && raw.result != null && typeof raw.result !== "string") return raw.result;
+    }
+    return null;
+  }, []);
+
   // Watch for gate agent (answer evaluator) completion — separate from workflow step agents
   useEffect(() => {
     if (!activeRunStatus || !activeAgentId) return;
     if (gateAgentIdRef.current !== activeAgentId) return; // not the gate agent
 
     if (activeRunStatus === "completed" || activeRunStatus === "error") {
+      const completedGateAgentId = activeAgentId;
       gateAgentIdRef.current = null;
       setActiveAgent(null);
-      clearRuns();
 
       if (activeRunStatus === "error") {
+        clearRuns();
         console.warn("[workflow] Gate evaluation failed — proceeding normally");
         setGateLoading(false);
         updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
@@ -521,10 +560,12 @@ export default function WorkflowPage() {
         return;
       }
 
-      // Read the evaluation result
-      finishGateEvaluation();
+      // Materialize gate evaluation output before clearing run messages.
+      const structuredOutput = extractStructuredResultPayload(completedGateAgentId);
+      clearRuns();
+      finishGateEvaluation(structuredOutput);
     }
-  }, [activeRunStatus, activeAgentId]);
+  }, [activeRunStatus, activeAgentId, extractStructuredResultPayload]);
 
   useEffect(() => {
     if (!activeRunStatus || !activeAgentId) return;
@@ -535,14 +576,47 @@ export default function WorkflowPage() {
     if (currentSteps[step]?.status !== "in_progress") return;
 
     if (activeRunStatus === "completed") {
+      const completedAgentId = activeAgentId;
       // Capture cost before clearing activeAgent — after setActiveAgent(null),
       // activeRun becomes null so activeRun?.totalCost would be undefined.
-      lastCompletedCostRef.current = activeAgentId
-        ? useAgentStore.getState().runs[activeAgentId]?.totalCost
+      lastCompletedCostRef.current = completedAgentId
+        ? useAgentStore.getState().runs[completedAgentId]?.totalCost
         : undefined;
       setActiveAgent(null);
 
       const finish = async () => {
+        // Backend-owned writes: step 0/1/2 return canonical artifact payload in
+        // structured output; Rust validates and writes context files.
+        if ((step === 0 || step === 1 || step === 2) && completedAgentId) {
+          const structuredOutput = extractStructuredResultPayload(completedAgentId);
+          if (structuredOutput == null || typeof structuredOutput !== "object" || Array.isArray(structuredOutput)) {
+            // Step 1 requires a structured output object — treat missing/invalid as an error.
+            // Step 0 does not require it — continue normally without materialization.
+            if (step === 1) {
+              updateStepStatus(step, "error");
+              setRunning(false);
+              toast.error(
+                `Step ${step + 1} completed but produced no structured output`,
+                { duration: Infinity },
+              );
+              return;
+            }
+            // step 0 and step 2: proceed without calling materialize
+          } else {
+            try {
+              await materializeWorkflowStepOutput(skillName, step, structuredOutput);
+            } catch (err) {
+              updateStepStatus(step, "error");
+              setRunning(false);
+              toast.error(
+                `Step ${step + 1} output validation failed: ${err instanceof Error ? err.message : String(err)}`,
+                { duration: Infinity },
+              );
+              return;
+            }
+          }
+        }
+
         // Verify the agent actually produced output files before marking complete
         if (workspacePath && skillName) {
           try {
@@ -589,13 +663,26 @@ export default function WorkflowPage() {
       }
       toast.error(`Step ${step + 1} failed`, { duration: Infinity });
     }
-  }, [activeRunStatus, updateStepStatus, setRunning, setActiveAgent, skillName, workspacePath, advanceToNextStep]);
+  }, [
+    activeRunStatus,
+    updateStepStatus,
+    setRunning,
+    setActiveAgent,
+    skillName,
+    workspacePath,
+    advanceToNextStep,
+    extractStructuredResultPayload,
+  ]);
 
   // --- Step handlers ---
 
   const handleStartAgentStep = async () => {
     if (!workspacePath) {
       toast.error("Missing workspace path", { duration: Infinity });
+      return;
+    }
+    if (gateLoading || gateAgentIdRef.current) {
+      toast.info("Answer analysis is in progress. Please wait for results.", { duration: 5000 });
       return;
     }
 
@@ -632,6 +719,8 @@ export default function WorkflowPage() {
   const runGateEvaluation = async () => {
     if (!workspacePath) return;
     console.log(`[workflow] Running answer evaluator gate for "${skillName}"`);
+    // Ensure no stale auto-start trigger can run another step during gate analysis.
+    setPendingAutoStartStep(null);
     setGateLoading(true);
 
     try {
@@ -650,6 +739,10 @@ export default function WorkflowPage() {
   };
 
   const runGateOrAdvance = () => {
+    const { gateLoading: gateLoadingNow } = useWorkflowStore.getState();
+    // Ignore duplicate clicks while evaluator is already running.
+    if (gateLoadingNow || gateAgentIdRef.current) return;
+
     // Gate 1: after step 0 (Research), evaluate answers before advancing to Detailed Research
     if (currentStep === 0 && workspacePath && !disabledSteps.includes(1)) {
       setGateContext("clarifications");
@@ -669,17 +762,17 @@ export default function WorkflowPage() {
   };
 
   const handleReviewContinue = async () => {
-    // Save the editor content to skills path (required — no workspace fallback)
-    if (stepConfig?.clarificationsEditable && reviewContent !== null && skillsPath) {
+    // Save the editor content via backend-owned context commands.
+    if (stepConfig?.clarificationsEditable && reviewContent !== null && workspacePath) {
       try {
         const content = clarificationsData
           ? JSON.stringify(clarificationsData, null, 2)
           : (reviewContent ?? "");
-        await writeFile(`${skillsPath}/${skillName}/context/clarifications.json`, content);
+        await saveClarificationsContent(skillName, workspacePath, content);
         setReviewContent(content);
         setEditorDirty(false);
       } catch (err) {
-        toast.error(`Failed to save: ${err instanceof Error ? err.message : String(err)}`);
+        toast.error(`Failed to save: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity });
         return;
       }
     }
@@ -687,19 +780,28 @@ export default function WorkflowPage() {
     runGateOrAdvance();
   };
 
-  const finishGateEvaluation = async () => {
+  const finishGateEvaluation = async (structuredOutput?: unknown) => {
     const proceedNormally = () => {
       setGateLoading(false);
       updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
       advanceToNextStep();
     };
 
-    if (!skillsPath) {
+    if (!workspacePath) {
       proceedNormally();
       return;
     }
 
+    console.log("[workflow] Gate structured output:", structuredOutput);
+
     try {
+      // Only materialize when the agent produced a structured payload.
+      // When null, skip materialization but still try to read an existing
+      // answer-evaluation.json in case the backend wrote it independently.
+      if (structuredOutput != null) {
+        await materializeAnswerEvaluationOutput(skillName, workspacePath, structuredOutput);
+      }
+
       const evalPath = `${workspacePath}/${skillName}/answer-evaluation.json`;
       const raw = await readFile(evalPath);
       const evaluation: AnswerEvaluation = JSON.parse(raw);
@@ -711,7 +813,30 @@ export default function WorkflowPage() {
         return;
       }
 
-      // Write gate result to .vibedata/skill-builder (internal files) so it appears in Rust
+      // Refresh only the evaluator feedback section so research notes stay intact
+      // while "Let Me Answer" returns users to actionable guidance in the editor UI.
+      if (workspacePath) {
+        try {
+          const clarificationsRaw = await getClarificationsContent(skillName, workspacePath);
+          const parsed = parseClarifications(clarificationsRaw);
+          if (parsed) {
+            const next: ClarificationsFile = {
+              ...parsed,
+              answer_evaluator_notes: buildGateFeedbackNotes(evaluation),
+            };
+            const serialized = JSON.stringify(next, null, 2);
+            await saveClarificationsContent(skillName, workspacePath, serialized);
+            setClarificationsData(next);
+            setReviewContent(serialized);
+            setEditorDirty(false);
+            setSaveStatus("idle");
+          }
+        } catch (err) {
+          console.warn("[workflow] Could not update clarifications notes from gate evaluation:", err);
+        }
+      }
+
+      // Write gate result to the app-managed workspace directory so it appears in Rust
       // [write_file] logs and persists for debugging.
       if (workspacePath) {
         const gateLog = JSON.stringify({ ...evaluation, action: "show_dialog", timestamp: new Date().toISOString() });
@@ -724,10 +849,61 @@ export default function WorkflowPage() {
       setGateEvaluation(evaluation);
       setShowGateDialog(true);
     } catch (err) {
-      console.warn("[workflow] Could not read evaluation result — proceeding normally:", err);
+      console.warn("[workflow] Gate evaluation materialization failed — proceeding normally:", err);
+      console.warn("[workflow] Gate structured output that failed:", structuredOutput);
       proceedNormally();
     }
   };
+
+  function buildGateFeedbackNotes(evaluation: AnswerEvaluation): Note[] {
+    const perQuestion = evaluation.per_question ?? [];
+    const optionalReason = (q: (typeof perQuestion)[number]): string | null =>
+      "reason" in q && typeof q.reason === "string" && q.reason.trim().length > 0
+        ? q.reason.trim()
+        : null;
+
+    return perQuestion
+    .filter(
+      (q) =>
+        q.verdict === "vague" ||
+        q.verdict === "contradictory" ||
+        q.verdict === "not_answered" ||
+        q.verdict === "needs_refinement"
+    )
+      .map((q) => {
+        if (q.verdict === "contradictory") {
+          const fallback = `This answer conflicts with ${q.contradicts}.`;
+          return {
+            type: "answer_feedback",
+            title: `Contradictory answer: ${q.question_id}`,
+            body: optionalReason(q) || fallback,
+          };
+        }
+      if (q.verdict === "not_answered") {
+        return {
+          type: "answer_feedback",
+          title: `Not answered: ${q.question_id}`,
+          body:
+            optionalReason(q) ||
+            "This question is still unanswered. Add a concrete answer before continuing.",
+        };
+      }
+      if (q.verdict === "needs_refinement") {
+        return {
+          type: "answer_feedback",
+          title: `Needs refinement: ${q.question_id}`,
+          body:
+            optionalReason(q) ||
+            "Answer has useful direction but needs more concrete detail and constraints.",
+        };
+      }
+        return {
+          type: "answer_feedback",
+          title: `Vague answer: ${q.question_id}`,
+          body: optionalReason(q) || "Answer is too general and needs specific details.",
+        };
+      });
+  }
 
   const closeGateDialog = () => {
     setShowGateDialog(false);
@@ -747,10 +923,18 @@ export default function WorkflowPage() {
       updateStepStatus(1, "completed");
       setCurrentStep(2);
     }
+    // Persist immediately so a crash in the 300ms debounce window cannot revert the skipped step.
+    // Read the store after the synchronous Zustand updates above so the snapshot is current.
+    const s = useWorkflowStore.getState();
+    const stepStatuses = s.steps.map((step) => ({ step_id: step.id, status: step.status }));
+    const runStatus = s.steps.every((step) => step.status === "completed") ? "completed" : "pending";
+    saveWorkflowState(skillName, s.currentStep, runStatus, stepStatuses, purpose ?? undefined).catch(
+      (err) => console.error("skipToDecisions: failed to persist state:", err),
+    );
     toast.success(message);
   };
 
-  /** Write the user's gate decision to .vibedata/skill-builder so it appears in Rust [write_file] logs. */
+  /** Write the user's gate decision to the app-managed workspace so it appears in Rust [write_file] logs. */
   const logGateAction = (decision: string) => {
     if (!workspacePath) return;
     const entry = JSON.stringify({ decision, verdict: gateVerdict, timestamp: new Date().toISOString() });
@@ -789,25 +973,52 @@ export default function WorkflowPage() {
   const handleGateLetMeAnswer = () => {
     logGateAction("let_me_answer");
     closeGateDialog();
+    toast.info("Refreshing evaluator feedback...", { duration: 5000 });
+    // Ensure evaluator-generated notes are visible immediately in the editor.
+    if (!workspacePath) {
+      toast.warning("Workspace path is missing in settings. Could not refresh feedback from disk.", { duration: Infinity });
+      return;
+    }
+
+    const prevNoteCount = clarificationsData?.answer_evaluator_notes?.length ?? 0;
+    getClarificationsContent(skillName, workspacePath)
+      .then((content) => {
+        const parsed = parseClarifications(content ?? null);
+        if (!parsed) {
+          toast.warning("Feedback file could not be parsed. You can still answer manually.", { duration: Infinity });
+          return;
+        }
+        setReviewContent(content ?? null);
+        setClarificationsData(parsed);
+        setEditorDirty(false);
+        setSaveStatus("idle");
+
+        const addedNotes = Math.max(0, (parsed.answer_evaluator_notes?.length ?? 0) - prevNoteCount);
+        if (addedNotes > 0) {
+          toast.success(`Loaded ${addedNotes} feedback note${addedNotes === 1 ? "" : "s"} for review.`);
+        } else {
+          toast.success("Feedback refreshed. You can update your answers now.");
+        }
+      })
+      .catch(() => {
+        toast.warning("Could not refresh feedback from disk. You can still answer manually.", { duration: Infinity });
+      });
   };
 
   /** Full reset for the current step: end session, clear disk artifacts, revert store, auto-start. */
   const performStepReset = async (stepId: number) => {
-    // Step 1 (Detailed Research) mutates step 0's clarifications.json,
-    // so resetting step 1 must also reset step 0.
-    const effectiveStep = stepId === 1 ? 0 : stepId;
     endActiveSession();
     if (workspacePath) {
       try {
-        await resetWorkflowStep(workspacePath, skillName, effectiveStep);
+        await resetWorkflowStep(workspacePath, skillName, stepId);
       } catch {
         // best-effort -- proceed even if disk cleanup fails
       }
     }
     clearRuns();
-    resetToStep(effectiveStep);
-    autoStartAfterReset(effectiveStep);
-    toast.success(stepId === 1 ? "Reset to Research step" : `Reset to step ${effectiveStep + 1}`);
+    resetToStep(stepId);
+    autoStartAfterReset(stepId);
+    toast.success(`Reset to step ${stepId + 1}`);
   };
 
   const handleClarificationsChange = useCallback((updated: ClarificationsFile) => {
@@ -817,16 +1028,16 @@ export default function WorkflowPage() {
     if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
   }, []);
 
-  // Save editor content to skills path (required — no workspace fallback).
+  // Save editor content through backend domain command.
   // Returns true on success, false if the write failed.
   const handleSave = useCallback(async (silent = false): Promise<boolean> => {
-    if (!stepConfig?.clarificationsEditable || !skillsPath) return false;
+    if (!stepConfig?.clarificationsEditable || !workspacePath) return false;
     setSaveStatus("saving");
     try {
       const content = clarificationsData
         ? JSON.stringify(clarificationsData, null, 2)
         : (reviewContent ?? "");
-      await writeFile(`${skillsPath}/${skillName}/context/clarifications.json`, content);
+      await saveClarificationsContent(skillName, workspacePath, content);
       setReviewContent(content);
       setEditorDirty(false);
       setSaveStatus("saved");
@@ -837,10 +1048,10 @@ export default function WorkflowPage() {
       return true;
     } catch (err) {
       setSaveStatus("dirty"); // Revert to dirty on failure
-      toast.error(`Failed to save: ${err instanceof Error ? err.message : String(err)}`);
+      toast.error(`Failed to save: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity });
       return false;
     }
-  }, [stepConfig?.clarificationsEditable, skillsPath, reviewContent, clarificationsData, skillName]);
+  }, [stepConfig?.clarificationsEditable, workspacePath, reviewContent, clarificationsData, skillName]);
 
   const currentStepDef = steps[currentStep];
 
@@ -886,6 +1097,7 @@ export default function WorkflowPage() {
         onClarificationsChange={handleClarificationsChange}
         onClarificationsContinue={() => handleReviewContinue()}
         onReset={!reviewMode && stepConfig?.clarificationsEditable ? () => setResetTarget(0) : undefined}
+        onResetStep={!reviewMode ? () => performStepReset(currentStep) : undefined}
         saveStatus={saveStatus}
         evaluating={!!gateLoading}
       />
@@ -958,7 +1170,7 @@ export default function WorkflowPage() {
         </div>
       );
     }
-    if (pendingAutoStart) {
+    if (pendingAutoStartStep !== null) {
       return <AgentInitializingIndicator />;
     }
     return (
@@ -1042,17 +1254,26 @@ export default function WorkflowPage() {
       {/* Reset step dialog — shown when clicking a prior completed step */}
       <ResetStepDialog
         targetStep={resetTarget}
+        deleteFromStep={resetTarget !== null && resetTarget > 0 ? resetTarget + 1 : undefined}
         workspacePath={workspacePath ?? ""}
         skillName={skillName}
         open={resetTarget !== null}
         onOpenChange={(open) => { if (!open) setResetTarget(null) }}
+        executeReset={resetTarget !== null && resetTarget > 0
+          ? () => navigateBackToStepDb(workspacePath ?? "", skillName, resetTarget)
+          : undefined}
         onReset={() => {
           if (resetTarget !== null) {
             endActiveSession();
             clearRuns();
-            // Keep the target step as "completed" so its editor/output renders.
-            // Only subsequent steps are reset to "pending".
-            navigateBackToStep(resetTarget);
+            if (resetTarget === 0) {
+              // Step 0: full reset — re-runs from scratch.
+              resetToStep(0);
+            } else {
+              // Steps 1+: navigate_back_to_step already persisted the correct DB state;
+              // sync Zustand to match (target stays "completed", subsequent steps "pending").
+              navigateBackToStep(resetTarget);
+            }
             setResetTarget(null);
           }
         }}
@@ -1094,6 +1315,22 @@ export default function WorkflowPage() {
         onLetMeAnswer={handleGateLetMeAnswer}
         onContinueAnyway={handleGateContinueAnyway}
       />
+
+      {/* Gate evaluation progress modal — shown while answer evaluator runs */}
+      <Dialog open={gateLoading && !showGateDialog}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Analyzing Responses</DialogTitle>
+            <DialogDescription>
+              Reviewing your answers to determine whether to continue, ask for refinements, or skip ahead.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" />
+            Running answer analysis...
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <div className="flex h-[calc(100%+3rem)] -m-6">
         <WorkflowSidebar

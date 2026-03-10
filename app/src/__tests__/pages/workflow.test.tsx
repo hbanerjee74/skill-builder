@@ -35,6 +35,8 @@ vi.mock("@/lib/tauri", () => ({
   runWorkflowStep: vi.fn(),
   readFile: vi.fn(() => Promise.reject("not found")),
   writeFile: vi.fn(() => Promise.resolve()),
+  getClarificationsContent: vi.fn(() => Promise.reject("not found")),
+  saveClarificationsContent: vi.fn(() => Promise.resolve()),
   getWorkflowState: vi.fn(() => Promise.reject("not found")),
   saveWorkflowState: vi.fn(() => Promise.resolve()),
   resetWorkflowStep: vi.fn(() => Promise.resolve()),
@@ -45,11 +47,15 @@ vi.mock("@/lib/tauri", () => ({
   createWorkflowSession: vi.fn(() => Promise.resolve()),
   endWorkflowSession: vi.fn(() => Promise.resolve()),
   verifyStepOutput: vi.fn(() => Promise.resolve(true)),
+  materializeWorkflowStepOutput: vi.fn(() => Promise.resolve()),
+  materializeAnswerEvaluationOutput: vi.fn(() => Promise.resolve()),
   previewStepReset: vi.fn(() => Promise.resolve([])),
   getDisabledSteps: vi.fn(() => Promise.resolve([])),
   runAnswerEvaluator: vi.fn(() => Promise.reject("not available")),
   autofillClarifications: vi.fn(() => Promise.resolve(0)),
   logGateDecision: vi.fn(() => Promise.resolve()),
+  navigateBackToStepDb: vi.fn(() => Promise.resolve()),
+  getContextFileContent: vi.fn(() => Promise.resolve(null)),
 }));
 
 // Mock ClarificationsEditor — renders a simple div with testid and
@@ -80,16 +86,42 @@ vi.mock("@/components/agent-output-panel", () => ({
   AgentOutputPanel: () => <div data-testid="agent-output" />,
 }));
 vi.mock("@/components/workflow-step-complete", () => ({
-  WorkflowStepComplete: () => (
+  WorkflowStepComplete: vi.fn(() => (
     <div data-testid="step-complete" />
-  ),
+  )),
 }));
 
 // Import after mocks
 import WorkflowPage from "@/pages/workflow";
-import { getWorkflowState, saveWorkflowState, writeFile, readFile, runWorkflowStep, resetWorkflowStep, cleanupSkillSidecar, endWorkflowSession, previewStepReset, runAnswerEvaluator } from "@/lib/tauri";
+import {
+  getWorkflowState,
+  saveWorkflowState,
+  writeFile,
+  readFile,
+  getClarificationsContent,
+  saveClarificationsContent,
+  runWorkflowStep,
+  resetWorkflowStep,
+  cleanupSkillSidecar,
+  endWorkflowSession,
+  previewStepReset,
+  runAnswerEvaluator,
+  getDisabledSteps,
+  materializeWorkflowStepOutput,
+  materializeAnswerEvaluationOutput,
+  getContextFileContent,
+} from "@/lib/tauri";
 import { WorkflowSidebar } from "@/components/workflow-sidebar";
+import { WorkflowStepComplete } from "@/components/workflow-step-complete";
 import type { ClarificationsFile } from "@/lib/clarifications-types";
+
+// Bridge new domain context commands to existing read/write path-based assertions.
+vi.mocked(getClarificationsContent).mockImplementation((skillName: string) =>
+  vi.mocked(readFile)(`/test/skills/${skillName}/context/clarifications.json`)
+);
+vi.mocked(saveClarificationsContent).mockImplementation((skillName: string, _workspacePath: string, content: string) =>
+  vi.mocked(writeFile)(`/test/skills/${skillName}/context/clarifications.json`, content)
+);
 
 /** Minimal valid ClarificationsFile for tests */
 function makeClarificationsJson(overrides?: Partial<ClarificationsFile>): ClarificationsFile {
@@ -138,6 +170,7 @@ function makeClarificationsJson(overrides?: Partial<ClarificationsFile>): Clarif
       },
     ],
     notes: [],
+    answer_evaluator_notes: [],
     ...overrides,
   };
 }
@@ -311,6 +344,30 @@ describe("WorkflowPage — agent completion lifecycle", () => {
       const step0 = stepStatuses.find((s) => s.step_id === 0);
       expect(step0?.status).toBe("completed");
     }
+  });
+
+  it("restores disabled downstream steps when scope recommendation is active", async () => {
+    vi.mocked(getDisabledSteps).mockResolvedValueOnce([1, 2, 3]);
+    vi.mocked(getWorkflowState).mockResolvedValueOnce({
+      run: {
+        skill_name: "test-skill",
+        current_step: 0,
+        status: "completed",
+        purpose: "domain",
+        created_at: "",
+        updated_at: "",
+      },
+      steps: [
+        { skill_name: "test-skill", step_id: 0, status: "completed", started_at: null, completed_at: null },
+      ],
+    });
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().hydrated).toBe(true);
+      expect(useWorkflowStore.getState().disabledSteps).toEqual([1, 2, 3]);
+    });
   });
 
   it("does not complete a step that is not in_progress", async () => {
@@ -634,6 +691,8 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     vi.mocked(getWorkflowState).mockClear();
     vi.mocked(readFile).mockClear();
     vi.mocked(writeFile).mockClear();
+    vi.mocked(materializeWorkflowStepOutput).mockClear();
+    vi.mocked(materializeAnswerEvaluationOutput).mockClear();
   });
 
   afterEach(() => {
@@ -680,6 +739,33 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
 
     render(<WorkflowPage />);
 
+    act(() => {
+      useAgentStore.getState().addMessage("agent-2", {
+        type: "result",
+        content: undefined,
+        raw: {
+          result: {
+            status: "detailed_research_complete",
+            refinement_count: 1,
+            section_count: 1,
+            clarifications_json: {
+              version: "1",
+              metadata: {
+                question_count: 0,
+                section_count: 0,
+                refinement_count: 0,
+                must_answer_count: 0,
+                priority_questions: [],
+              },
+              sections: [],
+              notes: [],
+            },
+          },
+        },
+        timestamp: Date.now(),
+      });
+    });
+
     // Agent completes step 1
     act(() => {
       useAgentStore.getState().completeRun("agent-2", true);
@@ -693,6 +779,209 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
 
     // Should stay on step 1 completion screen (clarificationsEditable)
     expect(wf.currentStep).toBe(1);
+  });
+
+  it("passes step 0 structured payload to backend materialization", async () => {
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().updateStepStatus(0, "in_progress");
+    useWorkflowStore.getState().setRunning(true);
+    useAgentStore.getState().startRun("agent-step0-structured", "sonnet");
+
+    render(<WorkflowPage />);
+
+    const payload = {
+      status: "research_complete",
+      dimensions_selected: 1,
+      question_count: 1,
+      research_plan_markdown: "# Research Plan\n\n## Dimension Scores\n",
+      clarifications_json: {
+        version: "1",
+        metadata: {
+          question_count: 0,
+          section_count: 0,
+          refinement_count: 0,
+          must_answer_count: 0,
+          priority_questions: [],
+        },
+        sections: [],
+        notes: [],
+      },
+    };
+
+    act(() => {
+      useAgentStore.getState().addMessage("agent-step0-structured", {
+        type: "result",
+        content: undefined,
+        raw: { result: "Research complete.", structured_output: payload },
+        timestamp: Date.now(),
+      });
+      useAgentStore.getState().completeRun("agent-step0-structured", true);
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(materializeWorkflowStepOutput)).toHaveBeenCalledWith(
+        "test-skill",
+        0,
+        payload
+      );
+      expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
+    });
+  });
+
+  it("passes step 1 structured payload to backend materialization", async () => {
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(1);
+    useWorkflowStore.getState().updateStepStatus(1, "in_progress");
+    useWorkflowStore.getState().setRunning(true);
+    useAgentStore.getState().startRun("agent-step1-structured", "sonnet");
+
+    render(<WorkflowPage />);
+
+    const payload = {
+      status: "detailed_research_complete",
+      refinement_count: 2,
+      section_count: 1,
+      clarifications_json: {
+        version: "1",
+        metadata: {
+          question_count: 1,
+          section_count: 1,
+          refinement_count: 2,
+          must_answer_count: 0,
+          priority_questions: [],
+        },
+        sections: [],
+        notes: [],
+      },
+    };
+
+    act(() => {
+      useAgentStore.getState().addMessage("agent-step1-structured", {
+        type: "result",
+        content: undefined,
+        raw: { result: "Detailed research complete.", structured_output: payload },
+        timestamp: Date.now(),
+      });
+      useAgentStore.getState().completeRun("agent-step1-structured", true);
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(materializeWorkflowStepOutput)).toHaveBeenCalledWith(
+        "test-skill",
+        1,
+        payload
+      );
+      expect(useWorkflowStore.getState().steps[1].status).toBe("completed");
+    });
+  });
+
+  it("step 1 errors when structured output payload is missing", async () => {
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(1);
+    useWorkflowStore.getState().updateStepStatus(1, "in_progress");
+    useWorkflowStore.getState().setRunning(true);
+    useAgentStore.getState().startRun("agent-missing-step1", "sonnet");
+
+    render(<WorkflowPage />);
+
+    act(() => {
+      useAgentStore.getState().completeRun("agent-missing-step1", true);
+    });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[1].status).toBe("error");
+    });
+    expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
+    expect(mockToast.error).toHaveBeenCalled();
+  });
+
+  it("step 1 errors when structured output payload is not an object", async () => {
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(1);
+    useWorkflowStore.getState().updateStepStatus(1, "in_progress");
+    useWorkflowStore.getState().setRunning(true);
+    useAgentStore.getState().startRun("agent-step1-invalid-shape", "sonnet");
+
+    render(<WorkflowPage />);
+
+    act(() => {
+      useAgentStore.getState().addMessage("agent-step1-invalid-shape", {
+        type: "result",
+        content: undefined,
+        raw: {
+          result: [],
+        },
+        timestamp: Date.now(),
+      });
+      useAgentStore.getState().completeRun("agent-step1-invalid-shape", true);
+    });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[1].status).toBe("error");
+    });
+    expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
+    expect(mockToast.error).toHaveBeenCalled();
+  });
+
+  it("step 0 continues when structured output payload is missing", async () => {
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().updateStepStatus(0, "in_progress");
+    useWorkflowStore.getState().setRunning(true);
+    useAgentStore.getState().startRun("agent-missing-step0", "sonnet");
+
+    render(<WorkflowPage />);
+
+    act(() => {
+      useAgentStore.getState().completeRun("agent-missing-step0", true);
+    });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
+    });
+    expect(vi.mocked(materializeWorkflowStepOutput)).not.toHaveBeenCalled();
+  });
+
+  it("step 0 errors when structured output fails backend materialization", async () => {
+    vi.mocked(materializeWorkflowStepOutput).mockRejectedValueOnce(new Error("invalid payload"));
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().updateStepStatus(0, "in_progress");
+    useWorkflowStore.getState().setRunning(true);
+    useAgentStore.getState().startRun("agent-invalid-step0", "sonnet");
+
+    render(<WorkflowPage />);
+
+    act(() => {
+      useAgentStore.getState().addMessage("agent-invalid-step0", {
+        type: "result",
+        content: undefined,
+        raw: {
+          result: {
+            status: "research_complete",
+            dimensions_selected: 1,
+            question_count: 1,
+            research_plan_markdown: "# bad",
+            clarifications_json: {},
+          },
+        },
+        timestamp: Date.now(),
+      });
+      useAgentStore.getState().completeRun("agent-invalid-step0", true);
+    });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[0].status).toBe("error");
+    });
+    expect(mockToast.error).toHaveBeenCalled();
   });
 
   it("gate evaluator triggers on step 0 Continue", async () => {
@@ -731,6 +1020,401 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     );
   });
 
+  it("does not advance to Detailed Research while answer analysis is running", async () => {
+    const jsonData = makeClarificationsJson();
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path === "/test/skills/test-skill/context/clarifications.json") {
+        return Promise.resolve(JSON.stringify(jsonData));
+      }
+      if (path.includes("research-plan.md")) {
+        return Promise.resolve("# Research Plan\nTest content");
+      }
+      return Promise.reject("not found");
+    });
+
+    vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-agent-1");
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(0);
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(vi.mocked(WorkflowStepComplete)).toHaveBeenCalled();
+    });
+
+    const firstRenderProps = vi.mocked(WorkflowStepComplete).mock.lastCall?.[0];
+    expect(firstRenderProps).toBeTruthy();
+    expect(typeof firstRenderProps?.onClarificationsContinue).toBe("function");
+
+    await act(async () => {
+      firstRenderProps?.onClarificationsContinue?.();
+    });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().gateLoading).toBe(true);
+    });
+
+    // Simulate an accidental stale "Next Step" callback firing while the gate is active.
+    act(() => {
+      firstRenderProps?.onNextStep?.();
+    });
+
+    const wf = useWorkflowStore.getState();
+    expect(wf.currentStep).toBe(0);
+    expect(vi.mocked(runWorkflowStep)).not.toHaveBeenCalledWith("test-skill", 1, "/test/workspace");
+
+  });
+
+  it("writes vague/contradictory evaluator feedback into clarifications notes", async () => {
+    const jsonData = makeClarificationsJson();
+    const evaluation = {
+      verdict: "mixed",
+      answered_count: 2,
+      empty_count: 0,
+      vague_count: 1,
+      contradictory_count: 1,
+      total_count: 2,
+      reasoning: "One vague and one contradictory answer.",
+      per_question: [
+        { question_id: "Q1", verdict: "vague", reason: "Uses non-specific wording." },
+        { question_id: "Q2", verdict: "contradictory", contradicts: "Q1", reason: "Conflicts with Q1 response." },
+      ],
+    };
+
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path === "/test/skills/test-skill/context/clarifications.json") {
+        return Promise.resolve(JSON.stringify(jsonData));
+      }
+      if (path === "/test/workspace/test-skill/answer-evaluation.json") {
+        return Promise.resolve(JSON.stringify(evaluation));
+      }
+      if (path.includes("research-plan.md")) {
+        return Promise.resolve("# Research Plan\nTest content");
+      }
+      return Promise.reject("not found");
+    });
+    vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-agent-1");
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(0);
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(vi.mocked(WorkflowStepComplete)).toHaveBeenCalled();
+    });
+
+    const props = vi.mocked(WorkflowStepComplete).mock.lastCall?.[0];
+    expect(typeof props?.onClarificationsContinue).toBe("function");
+
+    await act(async () => {
+      props?.onClarificationsContinue?.();
+    });
+
+    // Complete gate evaluator agent and trigger finishGateEvaluation.
+    act(() => {
+      useAgentStore.getState().startRun("gate-agent-1", "haiku");
+      useAgentStore.getState().completeRun("gate-agent-1", true);
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(writeFile)).toHaveBeenCalled();
+    });
+
+    const writeCalls = vi.mocked(writeFile).mock.calls.filter(
+      ([path]) => path === "/test/skills/test-skill/context/clarifications.json"
+    );
+    expect(writeCalls.length).toBeGreaterThan(0);
+    const serialized = writeCalls[writeCalls.length - 1][1];
+    const parsed = JSON.parse(serialized);
+    expect(Array.isArray(parsed.answer_evaluator_notes)).toBe(true);
+    expect(parsed.answer_evaluator_notes.some((n: { title: string }) => n.title === "Vague answer: Q1")).toBe(true);
+    expect(parsed.answer_evaluator_notes.some((n: { title: string }) => n.title === "Contradictory answer: Q2")).toBe(true);
+  });
+
+  it("gate falls back when structured gate payload is missing", async () => {
+    const jsonData = makeClarificationsJson();
+    const evaluation = {
+      verdict: "mixed",
+      answered_count: 1,
+      empty_count: 0,
+      vague_count: 1,
+      contradictory_count: 0,
+      total_count: 1,
+      reasoning: "One answer is vague.",
+      per_question: [
+        { question_id: "Q1", verdict: "vague", reason: "Needs concrete metrics." },
+      ],
+    };
+
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path === "/test/skills/test-skill/context/clarifications.json") {
+        return Promise.resolve(JSON.stringify(jsonData));
+      }
+      if (path === "/test/workspace/test-skill/answer-evaluation.json") {
+        return Promise.resolve(JSON.stringify(evaluation));
+      }
+      if (path.includes("research-plan.md")) {
+        return Promise.resolve("# Research Plan\nTest content");
+      }
+      return Promise.reject("not found");
+    });
+    vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-agent-missing-structured");
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(0);
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(vi.mocked(WorkflowStepComplete)).toHaveBeenCalled();
+    });
+
+    const props = vi.mocked(WorkflowStepComplete).mock.lastCall?.[0];
+    await act(async () => {
+      props?.onClarificationsContinue?.();
+    });
+
+    act(() => {
+      useAgentStore.getState().startRun("gate-agent-missing-structured", "haiku");
+      // Intentionally no result message with structured payload.
+      useAgentStore.getState().completeRun("gate-agent-missing-structured", true);
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(materializeAnswerEvaluationOutput)).not.toHaveBeenCalled();
+    });
+    expect(await screen.findByRole("button", { name: "Let Me Answer" })).toBeTruthy();
+  });
+
+  it("writes evaluator feedback notes after Detailed Research continue (step 1 gate)", async () => {
+    const jsonData = makeClarificationsJson();
+    const evaluation = {
+      verdict: "mixed",
+      answered_count: 3,
+      empty_count: 0,
+      vague_count: 1,
+      contradictory_count: 0,
+      total_count: 3,
+      reasoning: "One vague answer.",
+      per_question: [
+        { question_id: "Q3", verdict: "vague", reason: "Missing concrete thresholds." },
+      ],
+    };
+
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path === "/test/skills/test-skill/context/clarifications.json") {
+        return Promise.resolve(JSON.stringify(jsonData));
+      }
+      if (path === "/test/workspace/test-skill/answer-evaluation.json") {
+        return Promise.resolve(JSON.stringify(evaluation));
+      }
+      if (path.includes("research-plan.md")) {
+        return Promise.resolve("# Research Plan\nTest content");
+      }
+      return Promise.reject("not found");
+    });
+    vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-agent-2");
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().updateStepStatus(1, "completed");
+    useWorkflowStore.getState().setCurrentStep(1);
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(vi.mocked(WorkflowStepComplete)).toHaveBeenCalled();
+    });
+
+    const props = vi.mocked(WorkflowStepComplete).mock.lastCall?.[0];
+    expect(typeof props?.onClarificationsContinue).toBe("function");
+
+    await act(async () => {
+      props?.onClarificationsContinue?.();
+    });
+
+    act(() => {
+      useAgentStore.getState().startRun("gate-agent-2", "haiku");
+      useAgentStore.getState().completeRun("gate-agent-2", true);
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(writeFile)).toHaveBeenCalled();
+    });
+
+    const writeCalls = vi.mocked(writeFile).mock.calls.filter(
+      ([path]) => path === "/test/skills/test-skill/context/clarifications.json"
+    );
+    expect(writeCalls.length).toBeGreaterThan(0);
+    const serialized = writeCalls[writeCalls.length - 1][1];
+    const parsed = JSON.parse(serialized);
+    expect(parsed.answer_evaluator_notes.some((n: { title: string }) => n.title === "Vague answer: Q3")).toBe(true);
+  });
+
+  it("writes notes for not_answered and needs_refinement verdicts", async () => {
+    const jsonData = makeClarificationsJson();
+    const evaluation = {
+      verdict: "mixed",
+      answered_count: 1,
+      empty_count: 1,
+      vague_count: 0,
+      contradictory_count: 0,
+      total_count: 2,
+      reasoning: "One unanswered and one needs refinement.",
+      per_question: [
+        { question_id: "Q1", verdict: "not_answered" },
+        { question_id: "Q2", verdict: "needs_refinement" },
+      ],
+    };
+
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path === "/test/skills/test-skill/context/clarifications.json") {
+        return Promise.resolve(JSON.stringify(jsonData));
+      }
+      if (path === "/test/workspace/test-skill/answer-evaluation.json") {
+        return Promise.resolve(JSON.stringify(evaluation));
+      }
+      if (path.includes("research-plan.md")) {
+        return Promise.resolve("# Research Plan\nTest content");
+      }
+      return Promise.reject("not found");
+    });
+    vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-agent-4");
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(0);
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(vi.mocked(WorkflowStepComplete)).toHaveBeenCalled();
+    });
+
+    const props = vi.mocked(WorkflowStepComplete).mock.lastCall?.[0];
+    expect(typeof props?.onClarificationsContinue).toBe("function");
+
+    await act(async () => {
+      props?.onClarificationsContinue?.();
+    });
+
+    act(() => {
+      useAgentStore.getState().startRun("gate-agent-4", "haiku");
+      useAgentStore.getState().completeRun("gate-agent-4", true);
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(writeFile)).toHaveBeenCalled();
+    });
+
+    const writeCalls = vi.mocked(writeFile).mock.calls.filter(
+      ([path]) => path === "/test/skills/test-skill/context/clarifications.json"
+    );
+    expect(writeCalls.length).toBeGreaterThan(0);
+    const serialized = writeCalls[writeCalls.length - 1][1];
+    const parsed = JSON.parse(serialized);
+    expect(parsed.answer_evaluator_notes.some((n: { title: string }) => n.title === "Not answered: Q1")).toBe(true);
+    expect(parsed.answer_evaluator_notes.some((n: { title: string }) => n.title === "Needs refinement: Q2")).toBe(true);
+  });
+
+  it("reloads clarifications from disk when clicking Let Me Answer", async () => {
+    const baseData = makeClarificationsJson();
+    const reloadedData = makeClarificationsJson({
+      answer_evaluator_notes: [
+        {
+          type: "answer_feedback",
+          title: "Vague answer: Q1",
+          body: "Needs concrete metrics.",
+        },
+      ],
+    });
+    const evaluation = {
+      verdict: "mixed",
+      answered_count: 1,
+      empty_count: 0,
+      vague_count: 1,
+      contradictory_count: 0,
+      total_count: 1,
+      reasoning: "One answer is vague.",
+      per_question: [
+        { question_id: "Q1", verdict: "vague", reason: "Needs concrete metrics." },
+      ],
+    };
+
+    let clarificationsReadCount = 0;
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path === "/test/skills/test-skill/context/clarifications.json") {
+        clarificationsReadCount += 1;
+        const payload = clarificationsReadCount > 1 ? reloadedData : baseData;
+        return Promise.resolve(JSON.stringify(payload));
+      }
+      if (path === "/test/workspace/test-skill/answer-evaluation.json") {
+        return Promise.resolve(JSON.stringify(evaluation));
+      }
+      if (path.includes("research-plan.md")) {
+        return Promise.resolve("# Research Plan\nTest content");
+      }
+      return Promise.reject("not found");
+    });
+    vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-agent-3");
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(0);
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(vi.mocked(WorkflowStepComplete)).toHaveBeenCalled();
+    });
+
+    const props = vi.mocked(WorkflowStepComplete).mock.lastCall?.[0];
+    expect(typeof props?.onClarificationsContinue).toBe("function");
+
+    await act(async () => {
+      props?.onClarificationsContinue?.();
+    });
+
+    act(() => {
+      useAgentStore.getState().startRun("gate-agent-3", "haiku");
+      useAgentStore.getState().completeRun("gate-agent-3", true);
+    });
+
+    const letMeAnswerButton = await screen.findByRole("button", { name: "Let Me Answer" });
+    await act(async () => {
+      letMeAnswerButton.click();
+    });
+
+    await waitFor(() => {
+      expect(clarificationsReadCount).toBeGreaterThanOrEqual(2);
+    });
+
+    await waitFor(() => {
+      const lastProps = vi.mocked(WorkflowStepComplete).mock.lastCall?.[0];
+      const notes = (
+        lastProps?.clarificationsData as { answer_evaluator_notes?: Array<{ title: string }> } | undefined
+      )?.answer_evaluator_notes ?? [];
+      expect(notes.some((n) => n.title === "Vague answer: Q1")).toBe(true);
+    });
+  });
+
   it("skipToDecisions from step 0 skips to step 2 (Confirm Decisions)", async () => {
     // Set up step 0 completed
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
@@ -748,6 +1432,87 @@ describe("WorkflowPage — editable clarifications on completed agent step", () 
     expect(wf.steps[1].status).toBe("completed");
     expect(wf.currentStep).toBe(2);
     expect(wf.steps[2].name).toBe("Confirm Decisions");
+  });
+
+  it("skipToDecisions immediately persists state to DB so a crash doesn't revert the skipped step", async () => {
+    // Set up step 0 completed with clarifications
+    const jsonData = makeClarificationsJson();
+    const sufficientEvaluation = {
+      verdict: "sufficient",
+      answered_count: 2,
+      empty_count: 0,
+      vague_count: 0,
+      contradictory_count: 0,
+      total_count: 2,
+      reasoning: "All answers are clear and complete.",
+      per_question: [],
+    };
+
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path === "/test/skills/test-skill/context/clarifications.json") {
+        return Promise.resolve(JSON.stringify(jsonData));
+      }
+      if (path === "/test/workspace/test-skill/answer-evaluation.json") {
+        return Promise.resolve(JSON.stringify(sufficientEvaluation));
+      }
+      if (path.includes("research-plan.md")) {
+        return Promise.resolve("# Research Plan\nTest content");
+      }
+      return Promise.reject("not found");
+    });
+    vi.mocked(runAnswerEvaluator).mockResolvedValue("gate-agent-sufficient");
+    vi.mocked(saveWorkflowState).mockClear();
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(0);
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(vi.mocked(WorkflowStepComplete)).toHaveBeenCalled();
+    });
+
+    // Trigger the gate evaluator via the Continue callback
+    const props = vi.mocked(WorkflowStepComplete).mock.lastCall?.[0];
+    await act(async () => {
+      props?.onClarificationsContinue?.();
+    });
+
+    // Gate agent completes — triggers finishGateEvaluation → reads answer-evaluation.json
+    act(() => {
+      useAgentStore.getState().startRun("gate-agent-sufficient", "haiku");
+      useAgentStore.getState().completeRun("gate-agent-sufficient", true);
+    });
+
+    // Wait for the "Skip to Decisions" button to appear (verdict = "sufficient")
+    const skipButton = await screen.findByRole("button", { name: "Skip to Decisions" });
+
+    // Clear calls accumulated during setup so we can assert on the immediate persist only
+    vi.mocked(saveWorkflowState).mockClear();
+
+    await act(async () => {
+      skipButton.click();
+    });
+
+    // saveWorkflowState must have been called synchronously (not waiting for the 300ms debounce)
+    // so that a crash immediately after clicking "Skip to Decisions" doesn't revert step 1.
+    expect(vi.mocked(saveWorkflowState)).toHaveBeenCalledWith(
+      "test-skill",
+      2,         // currentStep = 2 (Confirm Decisions)
+      "pending", // not all steps completed yet
+      expect.arrayContaining([
+        expect.objectContaining({ step_id: 1, status: "completed" }),
+        expect.objectContaining({ step_id: 2, status: "pending" }),
+      ]),
+      expect.anything(),
+    );
+
+    // Zustand state must also reflect the skip
+    expect(useWorkflowStore.getState().currentStep).toBe(2);
+    expect(useWorkflowStore.getState().steps[1].status).toBe("completed");
   });
 });
 
@@ -833,21 +1598,14 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
     useWorkflowStore.getState().updateStepStatus(0, "error");
     useWorkflowStore.getState().setRunning(false);
 
-    // readFile returns content for the step's first output file -> errorHasArtifacts = true
-    vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path.includes("research-plan.md")) {
-        return Promise.resolve("partial content");
-      }
-      return Promise.reject("not found");
-    });
+    // getContextFileContent returns content for step 0's first output file (context/clarifications.json)
+    vi.mocked(getContextFileContent).mockResolvedValue("partial content");
 
     render(<WorkflowPage />);
 
-    // Wait for artifact detection to complete (readFile resolves asynchronously)
+    // Wait for artifact detection to complete (getContextFileContent resolves asynchronously)
     await waitFor(() => {
-      expect(vi.mocked(readFile)).toHaveBeenCalledWith(
-        expect.stringContaining("research-plan.md")
-      );
+      expect(vi.mocked(getContextFileContent)).toHaveBeenCalled();
     });
     // Flush promise so errorHasArtifacts state updates
     await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
@@ -1208,5 +1966,265 @@ describe("WorkflowPage — review mode default state", () => {
       expect(useWorkflowStore.getState().hydrated).toBe(true);
     });
     expect(useWorkflowStore.getState().reviewMode).toBe(false);
+  });
+});
+
+describe("step reset behavior regressions", () => {
+  beforeEach(() => {
+    resetTauriMocks();
+    useWorkflowStore.getState().reset();
+    useAgentStore.getState().clearRuns();
+    useSettingsStore.getState().reset();
+
+    useSettingsStore.getState().setSettings({
+      workspacePath: "/test/workspace",
+      skillsPath: "/test/skills",
+      anthropicApiKey: "sk-test",
+    });
+
+    mockToast.success.mockClear();
+    mockToast.error.mockClear();
+    mockToast.info.mockClear();
+    mockBlocker.proceed.mockClear();
+    mockBlocker.reset.mockClear();
+    mockBlocker.status = "idle";
+
+    vi.mocked(saveWorkflowState).mockClear();
+    vi.mocked(getWorkflowState).mockClear();
+    vi.mocked(readFile).mockClear();
+    vi.mocked(writeFile).mockClear();
+    vi.mocked(resetWorkflowStep).mockClear();
+    vi.mocked(endWorkflowSession).mockClear();
+    vi.mocked(previewStepReset).mockClear();
+  });
+
+  afterEach(() => {
+    useWorkflowStore.getState().reset();
+    useAgentStore.getState().clearRuns();
+    useSettingsStore.getState().reset();
+    // Restore default mocks in case a test overrode them
+    vi.mocked(WorkflowSidebar).mockImplementation(() => <div data-testid="workflow-sidebar" />);
+    vi.mocked(WorkflowStepComplete).mockImplementation(() => <div data-testid="step-complete" />);
+  });
+
+  it("performStepReset(1) calls resetWorkflowStep with stepId 1 not 0", async () => {
+    // Bug 1 regression: performStepReset used currentStep (0) instead of the passed stepId arg.
+    // Set up step 1 as the current completed step; step 0 also completed.
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().updateStepStatus(1, "completed");
+    useWorkflowStore.getState().setCurrentStep(1);
+
+    // readFile rejects so the missing-files error path is not triggered
+    vi.mocked(readFile).mockRejectedValue("not found");
+    vi.mocked(resetWorkflowStep).mockResolvedValue(undefined);
+
+    // Override WorkflowStepComplete mock to expose the onResetStep callback
+    let capturedOnResetStep: (() => void) | undefined;
+    vi.mocked(WorkflowStepComplete).mockImplementation(({ onResetStep }) => {
+      capturedOnResetStep = onResetStep;
+      return <div data-testid="step-complete" />;
+    });
+
+    render(<WorkflowPage />);
+
+    // Wait for the completed-step render so onResetStep is captured
+    await waitFor(() => {
+      expect(screen.getByTestId("step-complete")).toBeTruthy();
+    });
+
+    expect(capturedOnResetStep).toBeDefined();
+
+    // Trigger performStepReset(1) via the captured prop
+    await act(async () => {
+      capturedOnResetStep!();
+    });
+
+    // resetWorkflowStep must be called with stepId=1, NOT 0 (the Bug 1 regression check)
+    expect(vi.mocked(resetWorkflowStep)).toHaveBeenCalledWith(
+      "/test/workspace",
+      "test-skill",
+      1,
+    );
+
+    // Step 0 was NOT the target — it must still be completed
+    expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
+
+    // currentStep was repositioned to 1 by resetToStep(1)
+    expect(useWorkflowStore.getState().currentStep).toBe(1);
+  });
+
+  it("performStepReset(1) calls resetToStep(1) making step 1 pending without touching step 0", async () => {
+    // Bug 1 regression: resetToStep(1) resets steps >= 1. Step 0 must remain completed.
+    // Note: after reset in update mode, autoStartAfterReset triggers auto-start which sets
+    // step 1 to in_progress — so we assert on the resetWorkflowStep call and step 0 state
+    // rather than the transient "pending" that immediately becomes "in_progress".
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().updateStepStatus(1, "completed");
+    useWorkflowStore.getState().setCurrentStep(1);
+
+    vi.mocked(readFile).mockRejectedValue("not found");
+    vi.mocked(resetWorkflowStep).mockResolvedValue(undefined);
+
+    let capturedOnResetStep: (() => void) | undefined;
+    vi.mocked(WorkflowStepComplete).mockImplementation(({ onResetStep }) => {
+      capturedOnResetStep = onResetStep;
+      return <div data-testid="step-complete" />;
+    });
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("step-complete")).toBeTruthy();
+    });
+
+    await act(async () => {
+      capturedOnResetStep!();
+    });
+
+    // resetToStep(1) was called — verified by checking it was called with step 1
+    expect(vi.mocked(resetWorkflowStep)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      1,
+    );
+
+    // Step 0 is still completed — resetToStep(1) only resets steps >= 1
+    expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
+
+    // Steps 2+ were also reset (they were pending already in this 4-step workflow)
+    expect(useWorkflowStore.getState().steps[2].status).toBe("pending");
+    expect(useWorkflowStore.getState().steps[3].status).toBe("pending");
+  });
+
+  it("ResetStepDialog for step 0 calls resetToStep(0) making step 0 pending", async () => {
+    // Bug 2 regression: clicking step 0 from step 1 in update mode should call resetToStep(0),
+    // making step 0 pending (not keeping it completed like navigateBackToStep would do).
+    vi.mocked(WorkflowSidebar).mockImplementation(({ onStepClick }: { onStepClick?: (id: number) => void }) => (
+      <div data-testid="workflow-sidebar">
+        <button data-testid="sidebar-step-0" onClick={() => onStepClick?.(0)}>Step 0</button>
+      </div>
+    ));
+
+    vi.mocked(previewStepReset).mockResolvedValue([]);
+    vi.mocked(resetWorkflowStep).mockResolvedValue(undefined);
+
+    // Steps 0 and 1 completed, currently on step 1
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().updateStepStatus(1, "completed");
+    useWorkflowStore.getState().setCurrentStep(1);
+
+    render(<WorkflowPage />);
+
+    // Click step 0 in the sidebar — opens ResetStepDialog (step 0 < currentStep 1)
+    await act(async () => {
+      screen.getByTestId("sidebar-step-0").click();
+    });
+
+    // ResetStepDialog should appear
+    await waitFor(() => {
+      expect(screen.getByText("Reset to Earlier Step")).toBeTruthy();
+    });
+
+    // Wait for preview to load and Reset button to be enabled
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Reset" })).toBeEnabled();
+    });
+
+    // Confirm the reset
+    await act(async () => {
+      screen.getByRole("button", { name: "Reset" }).click();
+    });
+
+    // Step 0 must be pending — resetToStep(0) was called (not navigateBackToStep)
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[0].status).toBe("pending");
+    });
+
+    // currentStep should reposition to 0
+    expect(useWorkflowStore.getState().currentStep).toBe(0);
+  });
+
+  it("ResetStepDialog for step 1 calls navigateBackToStep(1) keeping step 1 completed", async () => {
+    // When clicking step 1 from step 2 in update mode, the dialog calls navigateBackToStep(1).
+    // navigateBackToStep keeps the target step as-is (completed) and resets only steps > 1.
+    vi.mocked(WorkflowSidebar).mockImplementation(({ onStepClick }: { onStepClick?: (id: number) => void }) => (
+      <div data-testid="workflow-sidebar">
+        <button data-testid="sidebar-step-1" onClick={() => onStepClick?.(1)}>Step 1</button>
+      </div>
+    ));
+
+    vi.mocked(previewStepReset).mockResolvedValue([]);
+
+    // Steps 0, 1, 2 all completed, currently on step 2
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().updateStepStatus(1, "completed");
+    useWorkflowStore.getState().updateStepStatus(2, "completed");
+    useWorkflowStore.getState().setCurrentStep(2);
+
+    render(<WorkflowPage />);
+
+    // Click step 1 in the sidebar — step 1 < currentStep 2
+    await act(async () => {
+      screen.getByTestId("sidebar-step-1").click();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Reset to Earlier Step")).toBeTruthy();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Reset" })).toBeEnabled();
+    });
+
+    await act(async () => {
+      screen.getByRole("button", { name: "Reset" }).click();
+    });
+
+    // navigateBackToStep(1): keeps step 1 completed, resets steps > 1 to pending
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().currentStep).toBe(1);
+    });
+    expect(useWorkflowStore.getState().steps[1].status).toBe("completed");
+    expect(useWorkflowStore.getState().steps[2].status).toBe("pending");
+  });
+
+  it("WorkflowStepComplete receives onResetStep prop in update mode (non-review)", async () => {
+    // Verify that onResetStep is wired through to WorkflowStepComplete when reviewMode=false.
+    // The prop must be defined so the Reset Step button is available on the completion screen.
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    // reviewMode=false (update mode)
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(0);
+
+    vi.mocked(readFile).mockRejectedValue("not found");
+
+    let capturedOnResetStep: unknown = "NOT_CAPTURED";
+    vi.mocked(WorkflowStepComplete).mockImplementation(({ onResetStep }) => {
+      capturedOnResetStep = onResetStep;
+      return <div data-testid="step-complete" />;
+    });
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("step-complete")).toBeTruthy();
+    });
+
+    // onResetStep must be a function in update mode (not undefined)
+    expect(typeof capturedOnResetStep).toBe("function");
   });
 });

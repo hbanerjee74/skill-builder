@@ -1,7 +1,5 @@
 use std::fs;
 
-use tauri::Manager;
-
 use crate::db::Db;
 use crate::types::AppSettings;
 
@@ -10,19 +8,10 @@ use crate::types::AppSettings;
 pub(crate) const DEFAULT_MARKETPLACE_URL: &str = "hbanerjee74/skills";
 
 #[tauri::command]
-pub fn get_data_dir(app: tauri::AppHandle) -> Result<String, String> {
+pub fn get_data_dir(data_dir: tauri::State<'_, crate::DataDir>) -> Result<String, String> {
     log::info!("[get_data_dir]");
-    let data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("Failed to get data directory: {}", e))?;
-
-    if !data_dir.exists() {
-        fs::create_dir_all(&data_dir)
-            .map_err(|e| format!("Failed to create data directory: {}", e))?;
-    }
-
     data_dir
+        .0
         .to_str()
         .map(|s| s.to_string())
         .ok_or_else(|| "Data directory path contains invalid UTF-8".to_string())
@@ -183,6 +172,10 @@ fn diff_settings(old: &AppSettings, new: &AppSettings) -> Vec<String> {
     cmp_val!(log_level, "log_level");
     cmp_bool!(extended_context, "extended_context");
     cmp_bool!(extended_thinking, "extended_thinking");
+    cmp_bool!(interleaved_thinking_beta, "interleaved_thinking_beta");
+    cmp_opt!(sdk_effort, "sdk_effort");
+    cmp_opt!(fallback_model, "fallback_model");
+    cmp_bool!(refine_prompt_suggestions, "refine_prompt_suggestions");
     cmp_opt!(marketplace_url, "marketplace_url");
     if old.marketplace_registries.len() != new.marketplace_registries.len() {
         changes.push(format!("marketplace_registries={} entries", new.marketplace_registries.len()));

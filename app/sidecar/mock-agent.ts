@@ -59,10 +59,10 @@ function getOutputDir(stepTemplate: string): string {
 /**
  * Extract directory paths from the agent prompt.
  *
- * The Rust backend injects these into every prompt:
- *   "The context directory is: /path/to/context."
- *   "The skill output directory (SKILL.md and references/) is: /path/to/output."
- *   "The skill directory is: /path/to/skill."
+ * SDK protocol: prompt contains only "The skill name is: X" and "The workspace directory is: Y".
+ * Agents derive context_dir as workspace_dir/context and read .skill_output_dir for skill output path.
+ * This function supports both the legacy format (explicit paths in prompt) and the new format
+ * (workspace_dir only; context and skill output derived or read from .skill_output_dir).
  */
 /** @internal Exported for testing only. */
 export function parsePromptPaths(prompt: string): {
@@ -71,10 +71,11 @@ export function parsePromptPaths(prompt: string): {
   skillOutputDir: string | null;
   skillDir: string | null;
 } {
-  // Use [^\n]+ to capture paths that may contain dots (e.g., /Users/john.doe/)
   const workspaceMatch = prompt.match(
     /The workspace directory is: ([^\n]+?)\.\s/,
   );
+  const workspaceDir = workspaceMatch?.[1]?.trim() ?? null;
+
   const contextMatch = prompt.match(
     /The context directory is: ([^\n]+?)\.\s/,
   );
@@ -85,12 +86,47 @@ export function parsePromptPaths(prompt: string): {
     /The skill directory is: ([^\n]+?)\.\s/,
   );
 
+  // Legacy format: explicit context and/or skill output in prompt — use them
+  const contextDir =
+    contextMatch?.[1]?.trim() ??
+    (workspaceDir !== null ? path.join(workspaceDir, "context") : null);
+  const skillOutputDir = outputMatch?.[1]?.trim() ?? null;
+
   return {
-    workspaceDir: workspaceMatch?.[1]?.trim() ?? null,
-    contextDir: contextMatch?.[1]?.trim() ?? null,
-    skillOutputDir: outputMatch?.[1]?.trim() ?? null,
-    skillDir: skillDirMatch?.[1]?.trim() ?? null,
+    workspaceDir,
+    contextDir,
+    skillOutputDir,
+    skillDir: skillDirMatch?.[1]?.trim() ?? skillOutputDir ?? null,
   };
+}
+
+/**
+ * Resolve all paths from the prompt. For the new SDK protocol, reads .skill_output_dir from the workspace directory.
+ */
+export async function resolvePromptPathsAsync(prompt: string): Promise<{
+  workspaceDir: string | null;
+  contextDir: string | null;
+  skillOutputDir: string | null;
+  skillDir: string | null;
+}> {
+  const parsed = parsePromptPaths(prompt);
+  // New SDK protocol: skill output path not in prompt — read from .skill_output_dir
+  if (parsed.skillOutputDir === null && parsed.workspaceDir !== null) {
+    const dotPath = path.join(parsed.workspaceDir, ".skill_output_dir");
+    try {
+      const content = await fs.readFile(dotPath, "utf-8");
+      const skillOutputDir = content.trim();
+      return {
+        workspaceDir: parsed.workspaceDir,
+        contextDir: parsed.contextDir,
+        skillOutputDir: skillOutputDir || null,
+        skillDir: skillOutputDir || null,
+      };
+    } catch {
+      // .skill_output_dir missing (e.g. old run) — keep parsed
+    }
+  }
+  return parsed;
 }
 
 /** Check if a path exists (async replacement for fs.existsSync). */
@@ -166,6 +202,7 @@ export async function runMockAgent(
 
   const content = await fs.readFile(templatePath, "utf-8");
   const lines = content.split("\n").filter((line) => line.trim());
+  const structuredResultOverride = await buildStructuredMockResult(stepTemplate);
 
   let emittedResult = false;
   for (const line of lines) {
@@ -192,6 +229,11 @@ export async function runMockAgent(
         message.timestamp = Date.now();
       }
       if (message.type === "result") {
+        if (structuredResultOverride !== null) {
+          // Match real SDK behavior: structured JSON in structured_output, text summary in result.
+          message.structured_output = structuredResultOverride;
+          message.result = `Mock: ${stepTemplate} completed`;
+        }
         emittedResult = true;
       }
       onMessage(message);
@@ -233,7 +275,7 @@ async function writeMockOutputFiles(
 
   if (!(await pathExists(srcDir))) return;
 
-  const paths = parsePromptPaths(config.prompt);
+  const paths = await resolvePromptPathsAsync(config.prompt);
 
   // Determine the destination root for this step's files.
   //
@@ -286,4 +328,128 @@ async function copyDirRecursive(src: string, dest: string): Promise<void> {
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+type JsonObject = Record<string, unknown>;
+
+async function readJsonIfExists(filePath: string): Promise<JsonObject | null> {
+  try {
+    const raw = await fs.readFile(filePath, "utf-8");
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as JsonObject)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+async function readTextIfExists(filePath: string): Promise<string | null> {
+  try {
+    return await fs.readFile(filePath, "utf-8");
+  } catch {
+    return null;
+  }
+}
+
+/** @internal Exported for testing only. */
+export async function buildStructuredMockResult(
+  stepTemplate: string,
+): Promise<unknown | null> {
+  const outputsRoot = path.join(__dirname, "mock-templates", "outputs");
+  if (stepTemplate === "step0-research") {
+    const clarifications = await readJsonIfExists(
+      path.join(outputsRoot, "step0", "context", "clarifications.json"),
+    );
+    if (!clarifications) return null;
+    const metadata =
+      clarifications.metadata &&
+      typeof clarifications.metadata === "object" &&
+      !Array.isArray(clarifications.metadata)
+        ? (clarifications.metadata as JsonObject)
+        : {};
+    const researchPlan =
+      metadata.research_plan &&
+      typeof metadata.research_plan === "object" &&
+      !Array.isArray(metadata.research_plan)
+        ? (metadata.research_plan as JsonObject)
+        : {};
+    const questionCount =
+      typeof metadata.question_count === "number" ? metadata.question_count : 0;
+    const dimensionsSelected =
+      typeof researchPlan.dimensions_selected === "number"
+        ? researchPlan.dimensions_selected
+        : 0;
+    return {
+      status: "research_complete",
+      dimensions_selected: dimensionsSelected,
+      question_count: questionCount,
+      research_output: clarifications,
+    };
+  }
+
+  if (stepTemplate === "step1-detailed-research") {
+    const clarifications = await readJsonIfExists(
+      path.join(outputsRoot, "step1", "context", "clarifications.json"),
+    );
+    if (!clarifications) return null;
+    const metadata =
+      clarifications.metadata &&
+      typeof clarifications.metadata === "object" &&
+      !Array.isArray(clarifications.metadata)
+        ? (clarifications.metadata as JsonObject)
+        : {};
+    const refinementCount =
+      typeof metadata.refinement_count === "number"
+        ? metadata.refinement_count
+        : 0;
+    const sectionCount =
+      typeof metadata.section_count === "number" ? metadata.section_count : 0;
+    return {
+      status: "detailed_research_complete",
+      refinement_count: refinementCount,
+      section_count: sectionCount,
+      clarifications_json: clarifications,
+    };
+  }
+
+  if (stepTemplate === "step2-confirm-decisions") {
+    const decisions = await readJsonIfExists(
+      path.join(outputsRoot, "step2", "context", "decisions.json"),
+    );
+    if (!decisions) return null;
+    const metadata =
+      decisions.metadata &&
+      typeof decisions.metadata === "object" &&
+      !Array.isArray(decisions.metadata)
+        ? (decisions.metadata as JsonObject)
+        : {};
+    const decisionsArray = Array.isArray(decisions.decisions)
+      ? decisions.decisions
+      : [];
+    const decisionCount =
+      typeof metadata.decision_count === "number"
+        ? metadata.decision_count
+        : decisionsArray.length;
+    const conflictsResolved =
+      typeof metadata.conflicts_resolved === "number"
+        ? metadata.conflicts_resolved
+        : 0;
+    const round = typeof metadata.round === "number" ? metadata.round : 1;
+    return {
+      status: "confirm_decisions_complete",
+      decision_count: decisionCount,
+      conflicts_resolved: conflictsResolved,
+      round,
+      decisions_json: decisions,
+    };
+  }
+
+  if (stepTemplate === "gate-answer-evaluator") {
+    return readJsonIfExists(
+      path.join(outputsRoot, "gate-answer-evaluator", "answer-evaluation.json"),
+    );
+  }
+
+  return null;
 }

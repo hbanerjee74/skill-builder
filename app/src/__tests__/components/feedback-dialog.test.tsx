@@ -34,6 +34,7 @@ vi.mock("@/lib/tauri", () => ({
   startAgent: mockStartAgent,
   getWorkspacePath: mockGetWorkspacePath,
   createGithubIssue: mockCreateGithubIssue,
+  persistAgentRun: vi.fn(() => Promise.resolve()),
   githubGetUser: vi.fn(() => Promise.resolve(null)),
   githubLogout: vi.fn(),
 }));
@@ -409,7 +410,7 @@ describe("FeedbackDialog", () => {
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith(
         "Failed to submit: GitHub PAT not configured",
-        { duration: 5000 },
+        { duration: Infinity },
       );
       // Should return to review step
       expect(screen.getByRole("button", { name: /Create GitHub Issue/i })).toBeInTheDocument();
@@ -438,7 +439,7 @@ describe("FeedbackDialog", () => {
 
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith("Failed to analyze feedback", {
-        duration: 5000,
+        duration: Infinity,
       });
     });
   });

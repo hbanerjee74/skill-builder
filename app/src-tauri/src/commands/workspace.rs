@@ -4,72 +4,35 @@ use std::fs;
 use std::path::Path;
 
 const WORKSPACE_PARENT: &str = ".vibedata";
-const WORKSPACE_SUBDIR: &str = "skill-builder";
+const WORKSPACE_SUBDIR: &str = "workspace";
 
-/// Resolve the default workspace path: `~/.vibedata/skill-builder`
-fn resolve_workspace_path() -> Result<String, String> {
-    let home = dirs::home_dir().ok_or_else(|| "Could not determine home directory".to_string())?;
-    let workspace = home.join(WORKSPACE_PARENT).join(WORKSPACE_SUBDIR);
+/// Resolve the workspace path from the shared app-local data directory.
+fn resolve_workspace_path(data_dir: &Path) -> Result<String, String> {
+    let workspace = data_dir.join(WORKSPACE_SUBDIR);
     workspace
         .to_str()
         .map(|s| s.to_string())
-        .ok_or_else(|| "Home directory path contains invalid UTF-8".to_string())
+        .ok_or_else(|| "Data directory path contains invalid UTF-8".to_string())
 }
 
-/// Migrate existing `~/.vibedata` workspace to `~/.vibedata/skill-builder`.
-/// Safe to call on every startup — skips if already migrated or if old dir is empty/absent.
-/// Uses a three-step atomic rename to avoid data loss:
-///   ~/.vibedata → ~/.vibedata-migrating (take old dir out of the way)
-///   mkdir ~/.vibedata                   (recreate the parent)
-///   ~/.vibedata-migrating → ~/.vibedata/skill-builder (move data to new location)
-fn migrate_to_skill_builder_subdir(home: &Path) {
-    let old_root = home.join(WORKSPACE_PARENT);
-    let new_root = home.join(WORKSPACE_PARENT).join(WORKSPACE_SUBDIR);
-
-    // Already on new layout, or nothing to migrate
-    if !old_root.is_dir() || new_root.exists() {
+/// Best-effort cleanup for legacy `~/.vibedata` folder from pre-DataDir builds.
+/// Non-fatal by design: startup must continue even if cleanup fails.
+fn cleanup_legacy_vibedata(home: &Path) {
+    let legacy_root = home.join(WORKSPACE_PARENT);
+    if !legacy_root.exists() {
         return;
     }
-
-    // If old root is empty, nothing to move (create_dir_all will handle it)
-    let has_content = fs::read_dir(&old_root)
-        .map(|mut d| d.next().is_some())
-        .unwrap_or(false);
-    if !has_content {
-        return;
+    match fs::remove_dir_all(&legacy_root) {
+        Ok(()) => log::info!("[init_workspace] removed legacy path {}", legacy_root.display()),
+        Err(e) => log::warn!(
+            "[init_workspace] failed to remove legacy path {}: {}",
+            legacy_root.display(),
+            e
+        ),
     }
-
-    let tmp_name = format!("{}-migrating", WORKSPACE_PARENT);
-    let tmp = home.join(&tmp_name);
-    if tmp.exists() {
-        log::warn!("[init_workspace] migration skipped: ~/{} already exists (leftover from a previous failed migration?)", tmp_name);
-        return;
-    }
-
-    if let Err(e) = fs::rename(&old_root, &tmp) {
-        log::warn!("[init_workspace] migration step 1 failed (rename ~/.vibedata to tmp): {}", e);
-        return;
-    }
-
-    if let Err(e) = fs::create_dir_all(&old_root) {
-        log::warn!("[init_workspace] migration step 2 failed (recreate ~/.vibedata): {}", e);
-        let _ = fs::rename(&tmp, &old_root); // restore
-        return;
-    }
-
-    if let Err(e) = fs::rename(&tmp, &new_root) {
-        log::warn!("[init_workspace] migration step 3 failed (rename tmp to ~/.vibedata/skill-builder): {}", e);
-        // Try to restore: drop newly created empty parent, rename tmp back
-        let _ = fs::remove_dir(&old_root);
-        let _ = fs::rename(&tmp, &old_root);
-        return;
-    }
-
-    log::info!("[init_workspace] migrated workspace: ~/.vibedata → ~/.vibedata/skill-builder");
 }
 
-/// Migrate from the old workspace layout (agents/, references/, CLAUDE.md at root)
-/// to the new layout where everything lives under `.claude/`.
+/// Migrate stale workspace layout artifacts after reorganization.
 /// Safe to call on every startup — only removes files that exist.
 fn migrate_workspace_layout(workspace_path: &str) {
     let base = Path::new(workspace_path);
@@ -85,28 +48,132 @@ fn migrate_workspace_layout(workspace_path: &str) {
     if db_file.is_file() {
         let _ = fs::remove_file(&db_file);
     }
-    // Remove root CLAUDE.md only if .claude/CLAUDE.md exists (migration complete)
-    let old_claude_md = base.join("CLAUDE.md");
-    let new_claude_md = base.join(".claude").join("CLAUDE.md");
-    if old_claude_md.is_file() && new_claude_md.is_file() {
-        let _ = fs::remove_file(&old_claude_md);
+    // Remove stale nested CLAUDE.md if both files exist.
+    // Workspace instructions now live at workspace/CLAUDE.md.
+    let root_claude_md = base.join("CLAUDE.md");
+    let nested_claude_md = base.join(".claude").join("CLAUDE.md");
+    if root_claude_md.is_file() && nested_claude_md.is_file() {
+        let _ = fs::remove_file(&nested_claude_md);
+    }
+}
+
+fn migrate_context_from_skills_path(workspace_path: &str, skills_path: &str) {
+    let skills_root = Path::new(skills_path);
+    if !skills_root.is_dir() {
+        return;
+    }
+
+    let entries = match fs::read_dir(skills_root) {
+        Ok(entries) => entries,
+        Err(e) => {
+            log::warn!(
+                "[init_workspace] failed to read skills_path for context migration {}: {}",
+                skills_root.display(),
+                e
+            );
+            return;
+        }
+    };
+
+    for entry in entries.flatten() {
+        let file_name = entry.file_name();
+        let skill_name = file_name.to_string_lossy();
+        if skill_name.starts_with('.') {
+            continue;
+        }
+        let skill_dir = entry.path();
+        if !skill_dir.is_dir() {
+            continue;
+        }
+
+        let legacy_context = skill_dir.join("context");
+        if !legacy_context.is_dir() {
+            continue;
+        }
+
+        let workspace_skill_dir = Path::new(workspace_path).join(skill_name.as_ref());
+        let target_context = workspace_skill_dir.join("context");
+        if let Err(e) = fs::create_dir_all(&target_context) {
+            log::warn!(
+                "[init_workspace] failed to create workspace context dir {}: {}",
+                target_context.display(),
+                e
+            );
+            continue;
+        }
+
+        let target_has_content = fs::read_dir(&target_context)
+            .map(|mut d| d.next().is_some())
+            .unwrap_or(false);
+        if target_has_content {
+            continue;
+        }
+
+        let legacy_entries = match fs::read_dir(&legacy_context) {
+            Ok(entries) => entries,
+            Err(e) => {
+                log::warn!(
+                    "[init_workspace] failed to read legacy context dir {}: {}",
+                    legacy_context.display(),
+                    e
+                );
+                continue;
+            }
+        };
+
+        for legacy_entry in legacy_entries.flatten() {
+            let src = legacy_entry.path();
+            let dst = target_context.join(legacy_entry.file_name());
+            if dst.exists() {
+                continue;
+            }
+            if let Err(rename_err) = fs::rename(&src, &dst) {
+                if src.is_file() {
+                    if let Err(copy_err) = fs::copy(&src, &dst) {
+                        log::warn!(
+                            "[init_workspace] failed to migrate context file {} -> {}: {} ({})",
+                            src.display(),
+                            dst.display(),
+                            rename_err,
+                            copy_err
+                        );
+                        continue;
+                    }
+                    let _ = fs::remove_file(&src);
+                } else {
+                    log::warn!(
+                        "[init_workspace] failed to migrate context entry {} -> {}: {}",
+                        src.display(),
+                        dst.display(),
+                        rename_err
+                    );
+                }
+            }
+        }
+
+        let legacy_empty = fs::read_dir(&legacy_context)
+            .map(|mut d| d.next().is_none())
+            .unwrap_or(false);
+        if legacy_empty {
+            let _ = fs::remove_dir(&legacy_context);
+        }
     }
 }
 
 /// Initialize the workspace directory on app startup.
-/// Creates `~/.vibedata/skill-builder` if it doesn't exist, updates settings,
+/// Creates `<data_dir>/workspace` if it doesn't exist, updates settings,
 /// and deploys bundled agents to `.claude/`.
-/// Also migrates existing `~/.vibedata` data to `~/.vibedata/skill-builder` on first run.
 pub fn init_workspace(
     app: &tauri::AppHandle,
     db: &tauri::State<'_, Db>,
+    data_dir: &Path,
 ) -> Result<String, String> {
-    // Migrate old ~/.vibedata workspace to ~/.vibedata/skill-builder on first launch after upgrade
+    // Best-effort cleanup of pre-DataDir legacy folder.
     if let Some(home) = dirs::home_dir() {
-        migrate_to_skill_builder_subdir(&home);
+        cleanup_legacy_vibedata(&home);
     }
 
-    let workspace_path = resolve_workspace_path()?;
+    let workspace_path = resolve_workspace_path(data_dir)?;
 
     // Create directory if it doesn't exist
     fs::create_dir_all(&workspace_path)
@@ -154,6 +221,7 @@ pub fn init_workspace(
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         if let Ok(settings) = crate::db::read_settings(&conn) {
             if let Some(ref sp) = settings.skills_path {
+                migrate_context_from_skills_path(&workspace_path, sp);
                 let sp_path = Path::new(sp);
                 if sp_path.exists() && !sp_path.join(".git").exists() {
                     log::info!("One-time git upgrade: initializing repo at {}", sp);
@@ -200,7 +268,8 @@ pub fn clear_workspace(
         .ok_or_else(|| "Workspace path not initialized".to_string())?;
     drop(conn);
 
-    // Delete only .claude/agents/ — preserve skills/ and CLAUDE.md
+    // Delete only .claude/agents/ — preserve skills/ and CLAUDE.md.
+    // Managed plugins are refreshed by redeploy_agents() and unmanaged plugins are preserved.
     let agents_dir = Path::new(&workspace_path).join(".claude").join("agents");
     if agents_dir.is_dir() {
         fs::remove_dir_all(&agents_dir).map_err(|e| e.to_string())?;
@@ -230,8 +299,13 @@ pub fn clear_workspace(
 }
 
 #[tauri::command]
-pub fn reconcile_startup(_app: tauri::AppHandle, db: tauri::State<'_, Db>) -> Result<ReconciliationResult, String> {
-    log::info!("[reconcile_startup]");
+pub fn reconcile_startup(
+    _app: tauri::AppHandle,
+    db: tauri::State<'_, Db>,
+    apply: Option<bool>,
+) -> Result<ReconciliationResult, String> {
+    let apply = apply.unwrap_or(false);
+    log::info!("[reconcile_startup] mode={}", if apply { "apply" } else { "preview" });
     let conn = db.0.lock().map_err(|e| {
         log::error!("[reconcile_startup] Failed to acquire DB lock: {}", e);
         e.to_string()
@@ -244,40 +318,84 @@ pub fn reconcile_startup(_app: tauri::AppHandle, db: tauri::State<'_, Db>) -> Re
         .ok_or_else(|| "Skills path not configured. Please set it in Settings.".to_string())?;
     log::debug!("[reconcile_startup] workspace={} skills_path={}", workspace_path, skills_path);
 
-    // Reconcile orphaned workflow sessions from crashed instances
-    match crate::db::reconcile_orphaned_sessions(&conn) {
-        Ok(count) if count > 0 => {
-            log::info!("Reconciled {} orphaned workflow session(s)", count);
-        }
-        Err(e) => {
-            log::warn!("Failed to reconcile orphaned sessions: {}", e);
-        }
-        _ => {}
-    }
-
-    let result = crate::reconciliation::reconcile_on_startup(&conn, &workspace_path, &skills_path)?;
-
-    // Auto-commit new skill folders added while offline.
-    // This is non-fatal: log warnings but don't block startup.
-    let output_path = Path::new(&skills_path);
-
-    if output_path.exists() {
-        // Commit untracked skill folders to git
-        match crate::git::get_untracked_dirs(output_path) {
-            Ok(untracked) if !untracked.is_empty() => {
-                let msg = format!("auto-commit new skill folders: {}", untracked.join(", "));
-                match crate::git::commit_all(output_path, &msg) {
-                    Ok(Some(_)) => log::info!("[reconcile_startup] {}", msg),
-                    Ok(None) => log::debug!("[reconcile_startup] No changes after staging untracked folders"),
-                    Err(e) => log::warn!("[reconcile_startup] Failed to commit untracked folders: {}", e),
-                }
+    let result = if apply {
+        // Reconcile orphaned workflow sessions from crashed instances
+        match crate::db::reconcile_orphaned_sessions(&conn) {
+            Ok(count) if count > 0 => {
+                log::info!("Reconciled {} orphaned workflow session(s)", count);
             }
-            Err(e) => log::warn!("[reconcile_startup] Failed to detect untracked folders: {}", e),
+            Err(e) => {
+                log::warn!("Failed to reconcile orphaned sessions: {}", e);
+            }
             _ => {}
+        }
+
+        let result = crate::reconciliation::reconcile_on_startup(&conn, &workspace_path, &skills_path)?;
+
+        // Auto-commit new skill folders added while offline.
+        // This is non-fatal: log warnings but don't block startup.
+        let output_path = Path::new(&skills_path);
+        if output_path.exists() {
+            match crate::git::get_untracked_dirs(output_path) {
+                Ok(untracked) if !untracked.is_empty() => {
+                    let msg = format!("auto-commit new skill folders: {}", untracked.join(", "));
+                    match crate::git::commit_all(output_path, &msg) {
+                        Ok(Some(_)) => log::info!("[reconcile_startup] {}", msg),
+                        Ok(None) => {
+                            log::debug!("[reconcile_startup] No changes after staging untracked folders")
+                        }
+                        Err(e) => {
+                            log::warn!("[reconcile_startup] Failed to commit untracked folders: {}", e)
+                        }
+                    }
+                }
+                Err(e) => log::warn!("[reconcile_startup] Failed to detect untracked folders: {}", e),
+                _ => {}
+            }
+        }
+
+        let details = serde_json::to_string(&serde_json::json!({
+            "notifications": result.notifications,
+            "discovered_skills": result.discovered_skills,
+            "auto_cleaned": result.auto_cleaned,
+        }))
+        .unwrap_or_else(|_| "{\"error\":\"failed_to_serialize\"}".to_string());
+        if let Err(e) = crate::db::record_reconciliation_event(&conn, "applied", &details) {
+            log::warn!("[reconcile_startup] failed to record reconciliation event: {}", e);
+        }
+
+        result
+    } else {
+        crate::reconciliation::preview_reconcile_on_startup(&conn, &workspace_path, &skills_path)?
+    };
+
+    if !apply {
+        let details = serde_json::to_string(&serde_json::json!({
+            "notifications": result.notifications.len(),
+            "discovered_skills": result.discovered_skills.len(),
+        }))
+        .unwrap_or_else(|_| "{\"error\":\"failed_to_serialize\"}".to_string());
+        if let Err(e) = crate::db::record_reconciliation_event(&conn, "previewed", &details) {
+            log::warn!("[reconcile_startup] failed to record preview event: {}", e);
         }
     }
 
     Ok(result)
+}
+
+#[tauri::command]
+pub fn record_reconciliation_cancel(
+    db: tauri::State<'_, Db>,
+    notification_count: Option<usize>,
+    discovered_count: Option<usize>,
+) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let details = serde_json::to_string(&serde_json::json!({
+        "notifications": notification_count.unwrap_or(0),
+        "discovered_skills": discovered_count.unwrap_or(0),
+    }))
+    .unwrap_or_else(|_| "{\"error\":\"failed_to_serialize\"}".to_string());
+    crate::db::record_reconciliation_event(&conn, "cancelled", &details)
 }
 
 #[tauri::command]
@@ -358,11 +476,11 @@ pub fn resolve_discovery(
         "add-imported" => {
             // Add as imported, clear context folder — force skill_source to "imported"
             crate::db::upsert_skill_with_source(&conn, &skill_name, "imported", "domain")?;
-            // Validate skills_path before touching filesystem
-            let sp = Path::new(&skills_path);
-            validate_path_within(sp, &skill_name, "skills_path")?;
+            // Validate workspace_path before touching context filesystem
+            let wp = Path::new(&workspace_path);
+            validate_path_within(wp, &skill_name, "workspace_path")?;
             // Clear context folder
-            let context_dir = sp.join(&skill_name).join("context");
+            let context_dir = wp.join(&skill_name).join("context");
             if context_dir.exists() {
                 let _ = fs::remove_dir_all(&context_dir);
                 log::info!("[resolve_discovery] '{}': cleared context folder", skill_name);
@@ -401,7 +519,12 @@ pub fn create_workflow_session(
         log::error!("[create_workflow_session] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
-    crate::db::create_workflow_session(&conn, &session_id, &skill_name, instance.pid)
+    crate::commands::workflow_lifecycle::start_session(
+        &conn,
+        &session_id,
+        &skill_name,
+        instance.pid,
+    )
 }
 
 #[tauri::command]
@@ -414,7 +537,7 @@ pub fn end_workflow_session(
         log::error!("[end_workflow_session] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
-    crate::db::end_workflow_session(&conn, &session_id)
+    crate::commands::workflow_lifecycle::cancel_session(&conn, &session_id)
 }
 
 #[cfg(test)]
@@ -423,8 +546,13 @@ mod tests {
 
     #[test]
     fn test_resolve_workspace_path() {
-        let path = resolve_workspace_path().unwrap();
-        assert!(path.ends_with(".vibedata/skill-builder"), "expected path ending in .vibedata/skill-builder, got {}", path);
+        let tmp = tempfile::tempdir().unwrap();
+        let path = resolve_workspace_path(tmp.path()).unwrap();
+        assert!(
+            std::path::Path::new(&path).ends_with("workspace"),
+            "expected path ending in workspace, got {}",
+            path
+        );
     }
 
     #[test]
@@ -473,74 +601,142 @@ mod tests {
         assert!(result.is_ok(), "Non-existent path should be accepted (not yet created)");
     }
 
-    // --- migrate_to_skill_builder_subdir tests ---
+    // --- cleanup_legacy_vibedata tests ---
 
     #[test]
-    fn test_migrate_happy_path() {
+    fn test_cleanup_legacy_vibedata_happy_path() {
         let home = tempfile::tempdir().unwrap();
         let old_root = home.path().join(".vibedata");
         fs::create_dir_all(&old_root).unwrap();
         fs::write(old_root.join("agents.md"), "content").unwrap();
 
-        migrate_to_skill_builder_subdir(home.path());
-
-        let new_root = home.path().join(".vibedata").join("skill-builder");
-        assert!(new_root.join("agents.md").exists(), "file should be at new location");
-        assert!(!home.path().join(".vibedata-migrating").exists(), "tmp should be cleaned up");
+        cleanup_legacy_vibedata(home.path());
+        assert!(!old_root.exists(), "legacy root should be removed");
     }
 
     #[test]
-    fn test_migrate_skips_if_already_migrated() {
+    fn test_cleanup_legacy_vibedata_skips_if_absent() {
         let home = tempfile::tempdir().unwrap();
-        let new_root = home.path().join(".vibedata").join("skill-builder");
-        fs::create_dir_all(&new_root).unwrap();
-        fs::write(new_root.join("agents.md"), "content").unwrap();
 
-        // Should be a no-op
-        migrate_to_skill_builder_subdir(home.path());
-
-        assert!(new_root.join("agents.md").exists(), "existing new layout should be untouched");
+        cleanup_legacy_vibedata(home.path());
+        assert!(!home.path().join(".vibedata").exists(), "absent legacy path should remain absent");
     }
 
     #[test]
-    fn test_migrate_skips_if_old_dir_absent() {
-        let home = tempfile::tempdir().unwrap();
+    fn test_migrate_context_from_skills_path_moves_legacy_context_into_workspace() {
+        let workspace_root = tempfile::tempdir().unwrap();
+        let skills_root = tempfile::tempdir().unwrap();
 
-        // Old ~/.vibedata doesn't exist — nothing to do
-        migrate_to_skill_builder_subdir(home.path());
+        let legacy_context = skills_root.path().join("skill-a").join("context");
+        fs::create_dir_all(&legacy_context).unwrap();
+        fs::write(legacy_context.join("clarifications.json"), r#"{"ok":true}"#).unwrap();
+        fs::write(legacy_context.join("research-plan.md"), "legacy plan").unwrap();
 
-        assert!(!home.path().join(".vibedata").exists(), "nothing should be created");
+        migrate_context_from_skills_path(
+            &workspace_root.path().to_string_lossy(),
+            &skills_root.path().to_string_lossy(),
+        );
+
+        let target_context = workspace_root.path().join("skill-a").join("context");
+        assert_eq!(
+            fs::read_to_string(target_context.join("clarifications.json")).unwrap(),
+            r#"{"ok":true}"#
+        );
+        assert_eq!(
+            fs::read_to_string(target_context.join("research-plan.md")).unwrap(),
+            "legacy plan"
+        );
+        assert!(
+            !legacy_context.exists(),
+            "legacy context dir should be removed after successful move"
+        );
     }
 
     #[test]
-    fn test_migrate_skips_if_old_dir_empty() {
-        let home = tempfile::tempdir().unwrap();
-        let old_root = home.path().join(".vibedata");
-        fs::create_dir_all(&old_root).unwrap();
-        // No files inside
+    fn test_migrate_context_from_skills_path_skips_when_target_has_content() {
+        let workspace_root = tempfile::tempdir().unwrap();
+        let skills_root = tempfile::tempdir().unwrap();
 
-        migrate_to_skill_builder_subdir(home.path());
+        let legacy_context = skills_root.path().join("skill-a").join("context");
+        fs::create_dir_all(&legacy_context).unwrap();
+        fs::write(legacy_context.join("clarifications.json"), "legacy").unwrap();
 
-        // Old empty dir should still be there (create_dir_all would have made it anyway)
-        // New subdir should not have been created by migration
-        assert!(!old_root.join("skill-builder").exists(), "should not create skill-builder from empty dir");
+        let target_context = workspace_root.path().join("skill-a").join("context");
+        fs::create_dir_all(&target_context).unwrap();
+        fs::write(target_context.join("existing.md"), "keep-me").unwrap();
+
+        migrate_context_from_skills_path(
+            &workspace_root.path().to_string_lossy(),
+            &skills_root.path().to_string_lossy(),
+        );
+
+        assert_eq!(
+            fs::read_to_string(target_context.join("existing.md")).unwrap(),
+            "keep-me"
+        );
+        assert!(
+            !target_context.join("clarifications.json").exists(),
+            "migration should skip this skill when target context is already non-empty"
+        );
+        assert_eq!(
+            fs::read_to_string(legacy_context.join("clarifications.json")).unwrap(),
+            "legacy",
+            "legacy content should remain untouched when target already has content"
+        );
     }
 
     #[test]
-    fn test_migrate_skips_if_tmp_exists() {
-        let home = tempfile::tempdir().unwrap();
-        let old_root = home.path().join(".vibedata");
-        fs::create_dir_all(&old_root).unwrap();
-        fs::write(old_root.join("agents.md"), "content").unwrap();
+    fn test_migrate_context_from_skills_path_does_not_overwrite_destination_files() {
+        let workspace_root = tempfile::tempdir().unwrap();
+        let skills_root = tempfile::tempdir().unwrap();
 
-        // Simulate a leftover tmp from a previous failed migration
-        let tmp = home.path().join(".vibedata-migrating");
-        fs::create_dir_all(&tmp).unwrap();
+        let legacy_context = skills_root.path().join("skill-a").join("context");
+        fs::create_dir_all(&legacy_context).unwrap();
+        fs::write(legacy_context.join("decisions.md"), "legacy-decisions").unwrap();
 
-        migrate_to_skill_builder_subdir(home.path());
+        let target_context = workspace_root.path().join("skill-a").join("context");
+        fs::create_dir_all(&target_context).unwrap();
+        fs::write(target_context.join("decisions.md"), "newer-decisions").unwrap();
 
-        // Should be a no-op: original file still in old location
-        assert!(old_root.join("agents.md").exists(), "file should remain in old location");
-        assert!(!old_root.join("skill-builder").exists(), "skill-builder should not be created");
+        migrate_context_from_skills_path(
+            &workspace_root.path().to_string_lossy(),
+            &skills_root.path().to_string_lossy(),
+        );
+
+        assert_eq!(
+            fs::read_to_string(target_context.join("decisions.md")).unwrap(),
+            "newer-decisions",
+            "destination file should not be overwritten by legacy content"
+        );
+        assert_eq!(
+            fs::read_to_string(legacy_context.join("decisions.md")).unwrap(),
+            "legacy-decisions"
+        );
+    }
+
+    #[test]
+    fn test_migrate_context_from_skills_path_is_idempotent_on_rerun() {
+        let workspace_root = tempfile::tempdir().unwrap();
+        let skills_root = tempfile::tempdir().unwrap();
+
+        let legacy_context = skills_root.path().join("skill-a").join("context");
+        fs::create_dir_all(&legacy_context).unwrap();
+        fs::write(legacy_context.join("clarifications.json"), r#"{"first":"run"}"#).unwrap();
+
+        let workspace_path = workspace_root.path().to_string_lossy().to_string();
+        let skills_path = skills_root.path().to_string_lossy().to_string();
+        migrate_context_from_skills_path(&workspace_path, &skills_path);
+        migrate_context_from_skills_path(&workspace_path, &skills_path);
+
+        let target_file = workspace_root
+            .path()
+            .join("skill-a")
+            .join("context")
+            .join("clarifications.json");
+        assert_eq!(fs::read_to_string(target_file).unwrap(), r#"{"first":"run"}"#);
+        assert!(
+            !legacy_context.exists(),
+            "legacy context should stay removed after repeated migration"
+        );
     }
 }

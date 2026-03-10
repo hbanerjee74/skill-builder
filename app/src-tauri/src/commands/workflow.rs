@@ -6,20 +6,20 @@ use std::sync::Mutex;
 use crate::agents::sidecar::{self, SidecarConfig};
 use crate::agents::sidecar_pool::SidecarPool;
 use crate::db::Db;
+use crate::types::{PackageResult, StepConfig, StepStatusUpdate, WorkflowStateResponse};
 use serde_json;
-use crate::types::{
-    PackageResult, StepConfig, StepStatusUpdate,
-    WorkflowStateResponse,
-};
 
-const FULL_TOOLS: &[&str] = &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task", "Skill"];
+const FULL_TOOLS: &[&str] = &[
+    "Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task", "Skill",
+];
+const CONTRACT_NO_WRITE_TOOLS: &[&str] = &["Read", "Glob", "Grep", "Task", "Skill"];
 
 pub fn resolve_model_id(shorthand: &str) -> String {
     match shorthand {
         "sonnet" => "claude-sonnet-4-6".to_string(),
-        "haiku"  => "claude-haiku-4-5".to_string(),
-        "opus"   => "claude-opus-4-6".to_string(),
-        other    => other.to_string(),
+        "haiku" => "claude-haiku-4-5".to_string(),
+        "opus" => "claude-opus-4-6".to_string(),
+        other => other.to_string(),
     }
 }
 
@@ -30,7 +30,11 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             name: "Research".to_string(),
             prompt_template: "research-orchestrator.md".to_string(),
             output_file: "context/clarifications.json".to_string(),
-            allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
+            // Step 0 must return canonical artifacts via structured output only.
+            allowed_tools: CONTRACT_NO_WRITE_TOOLS
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
             max_turns: 50,
         }),
         1 => Ok(StepConfig {
@@ -38,15 +42,23 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             name: "Detailed Research".to_string(),
             prompt_template: "detailed-research.md".to_string(),
             output_file: "context/clarifications.json".to_string(),
-            allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
+            // Step 1 must return canonical artifacts via structured output only.
+            allowed_tools: CONTRACT_NO_WRITE_TOOLS
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
             max_turns: 50,
         }),
         2 => Ok(StepConfig {
             step_id: 2,
             name: "Confirm Decisions".to_string(),
             prompt_template: "confirm-decisions.md".to_string(),
-            output_file: "context/decisions.md".to_string(),
-            allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
+            output_file: "context/decisions.json".to_string(),
+            // Step 2 returns decisions payload; backend materializes decisions.json.
+            allowed_tools: CONTRACT_NO_WRITE_TOOLS
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
             max_turns: 100,
         }),
         3 => Ok(StepConfig {
@@ -57,10 +69,7 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 120,
         }),
-        _ => Err(format!(
-            "Unknown step_id {}. Valid steps are 0-3.",
-            step_id
-        )),
+        _ => Err(format!("Unknown step_id {}. Valid steps are 0-3.", step_id)),
     }
 }
 
@@ -69,7 +78,7 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
 /// so we only need to copy once per workspace.
 ///
 /// **Dev-mode caveat:** In development, prompts are read from the repo root.
-/// Edits to `agents/` or `workspace/` while the app is running won't be
+/// Edits to `agent-sources/agents/` or `workspace/` while the app is running won't be
 /// picked up until the app is restarted.
 static COPIED_WORKSPACES: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 
@@ -80,9 +89,8 @@ pub fn resolve_prompt_source_dirs_public(app_handle: &tauri::AppHandle) -> (Path
 }
 
 /// Resolve the path to the bundled skills directory.
-/// Derived from the workspace source path (skills live alongside CLAUDE.md).
-/// In dev mode: `{CARGO_MANIFEST_DIR}/../../agent-sources/workspace/skills/`.
-/// In production: Tauri resource directory `workspace/skills/`.
+/// In dev mode: `{CARGO_MANIFEST_DIR}/../../agent-sources/skills/`.
+/// In production: Tauri resource directory `agent-sources/skills/`.
 pub fn resolve_bundled_skills_dir(app_handle: &tauri::AppHandle) -> PathBuf {
     use tauri::Manager;
 
@@ -93,14 +101,39 @@ pub fn resolve_bundled_skills_dir(app_handle: &tauri::AppHandle) -> PathBuf {
 
     let dev_path = repo_root
         .as_ref()
-        .map(|r| r.join("agent-sources").join("workspace").join("skills"));
+        .map(|r| r.join("agent-sources").join("skills"));
 
     match dev_path {
         Some(ref p) if p.is_dir() => p.clone(),
         _ => app_handle
             .path()
             .resource_dir()
-            .map(|r| r.join("workspace").join("skills"))
+            .map(|r| r.join("agent-sources").join("skills"))
+            .unwrap_or_default(),
+    }
+}
+
+/// Resolve the path to bundled plugins source directory.
+/// In dev mode: `{CARGO_MANIFEST_DIR}/../../agent-sources/plugins/`.
+/// In production: Tauri resource directory `agent-sources/plugins/`.
+pub fn resolve_bundled_plugins_dir(app_handle: &tauri::AppHandle) -> PathBuf {
+    use tauri::Manager;
+
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|p| p.parent())
+        .map(|p| p.to_path_buf());
+
+    let dev_path = repo_root
+        .as_ref()
+        .map(|r| r.join("agent-sources").join("plugins"));
+
+    match dev_path {
+        Some(ref p) if p.is_dir() => p.clone(),
+        _ => app_handle
+            .path()
+            .resource_dir()
+            .map(|r| r.join("agent-sources").join("plugins"))
             .unwrap_or_default(),
     }
 }
@@ -124,15 +157,31 @@ fn deploy_skill_for_workflow(
     let dest_skills_dir = std::path::Path::new(workspace_path)
         .join(".claude")
         .join("skills");
+    let dest = dest_skills_dir.join(skill_name);
 
     // Try purpose-based resolution first
-    let source_dir: std::path::PathBuf = match crate::db::get_workspace_skill_by_purpose(conn, purpose) {
+    let source_dir: std::path::PathBuf = match crate::db::get_workspace_skill_by_purpose(
+        conn, purpose,
+    ) {
         Ok(Some(ws)) => {
-            log::debug!(
-                "[deploy_skill_for_workflow] purpose='{}' → using workspace skill '{}' from {}",
-                purpose, ws.skill_name, ws.disk_path
-            );
-            std::path::PathBuf::from(&ws.disk_path)
+            // Bundled skills should always be copied from bundled sources.
+            // Using ws.disk_path for bundled rows can point to the destination
+            // itself and result in destructive self-overwrite.
+            if ws.is_bundled {
+                log::debug!(
+                    "[deploy_skill_for_workflow] purpose='{}' → using bundled source for '{}' (workspace row is bundled)",
+                    purpose, skill_name
+                );
+                bundled_skills_dir.join(skill_name)
+            } else {
+                log::debug!(
+                    "[deploy_skill_for_workflow] purpose='{}' → using workspace skill '{}' from {}",
+                    purpose,
+                    ws.skill_name,
+                    ws.disk_path
+                );
+                std::path::PathBuf::from(&ws.disk_path)
+            }
         }
         Ok(None) => {
             log::debug!(
@@ -153,22 +202,39 @@ fn deploy_skill_for_workflow(
     if !source_dir.is_dir() {
         log::debug!(
             "[deploy_skill_for_workflow] source dir not found for '{}' ({}), skipping",
-            skill_name, source_dir.display()
+            skill_name,
+            source_dir.display()
         );
         return;
     }
 
-    let dest = dest_skills_dir.join(skill_name);
+    if source_dir == dest {
+        log::warn!(
+            "[deploy_skill_for_workflow] source and destination are identical for '{}': {}; skipping copy to avoid self-overwrite",
+            skill_name,
+            source_dir.display()
+        );
+        return;
+    }
+
     // Remove existing copy so we always get a fresh deployment
     if dest.exists() {
         let _ = std::fs::remove_dir_all(&dest);
     }
     if let Err(e) = std::fs::create_dir_all(&dest) {
-        log::warn!("[deploy_skill_for_workflow] failed to create dest dir for '{}': {}", skill_name, e);
+        log::warn!(
+            "[deploy_skill_for_workflow] failed to create dest dir for '{}': {}",
+            skill_name,
+            e
+        );
         return;
     }
     if let Err(e) = super::imported_skills::copy_dir_recursive(&source_dir, &dest) {
-        log::warn!("[deploy_skill_for_workflow] failed to copy '{}': {}", skill_name, e);
+        log::warn!(
+            "[deploy_skill_for_workflow] failed to copy '{}': {}",
+            skill_name,
+            e
+        );
     }
 }
 
@@ -183,8 +249,12 @@ fn resolve_prompt_source_dirs(app_handle: &tauri::AppHandle) -> (PathBuf, PathBu
         .and_then(|p| p.parent())
         .map(|p| p.to_path_buf());
 
-    let agents_src = repo_root.as_ref().map(|r| r.join("agents"));
-    let claude_md_src = repo_root.as_ref().map(|r| r.join("agent-sources").join("workspace").join("CLAUDE.md"));
+    let agents_src = repo_root
+        .as_ref()
+        .map(|r| r.join("agent-sources").join("agents"));
+    let claude_md_src = repo_root
+        .as_ref()
+        .map(|r| r.join("agent-sources").join("workspace").join("CLAUDE.md"));
 
     let agents_dir = match agents_src {
         Some(ref p) if p.is_dir() => p.clone(),
@@ -192,7 +262,7 @@ fn resolve_prompt_source_dirs(app_handle: &tauri::AppHandle) -> (PathBuf, PathBu
             let resource = app_handle
                 .path()
                 .resource_dir()
-                .map(|r| r.join("agents"))
+                .map(|r| r.join("agent-sources").join("agents"))
                 .unwrap_or_default();
             if resource.is_dir() {
                 resource
@@ -224,13 +294,17 @@ fn resolve_prompt_source_dirs(app_handle: &tauri::AppHandle) -> (PathBuf, PathBu
 /// Returns true if this workspace has already been initialized this session.
 fn workspace_already_copied(workspace_path: &str) -> bool {
     let cache = COPIED_WORKSPACES.lock().unwrap_or_else(|e| e.into_inner());
-    cache.as_ref().is_some_and(|set| set.contains(workspace_path))
+    cache
+        .as_ref()
+        .is_some_and(|set| set.contains(workspace_path))
 }
 
 /// Mark a workspace as initialized for this session.
 fn mark_workspace_copied(workspace_path: &str) {
     let mut cache = COPIED_WORKSPACES.lock().unwrap_or_else(|e| e.into_inner());
-    cache.get_or_insert_with(HashSet::new).insert(workspace_path.to_string());
+    cache
+        .get_or_insert_with(HashSet::new)
+        .insert(workspace_path.to_string());
 }
 
 /// Remove a workspace from the session cache so the next
@@ -266,20 +340,20 @@ pub async fn ensure_workspace_prompts(
     // Extract paths from AppHandle before moving into the blocking closure
     // (AppHandle is !Send so it cannot cross the spawn_blocking boundary)
     let (agents_dir, claude_md) = resolve_prompt_source_dirs(app_handle);
+    let plugins_dir = resolve_bundled_plugins_dir(app_handle);
 
-    if !agents_dir.is_dir() && !claude_md.is_file() {
+    if !agents_dir.is_dir() && !claude_md.is_file() && !plugins_dir.is_dir() {
         return Ok(()); // No sources found anywhere — skip silently
     }
 
     let workspace = workspace_path.to_string();
     let agents = agents_dir.clone();
+    let plugins = plugins_dir.clone();
     let cmd = claude_md.clone();
 
-    tokio::task::spawn_blocking(move || {
-        copy_prompts_sync(&agents, &cmd, &workspace)
-    })
-    .await
-    .map_err(|e| format!("Prompt copy task failed: {}", e))??;
+    tokio::task::spawn_blocking(move || copy_prompts_sync(&agents, &plugins, &cmd, &workspace))
+        .await
+        .map_err(|e| format!("Prompt copy task failed: {}", e))??;
 
     mark_workspace_copied(workspace_path);
     Ok(())
@@ -287,9 +361,17 @@ pub async fn ensure_workspace_prompts(
 
 /// Synchronous inner copy logic shared by async and sync entry points.
 /// Only copies agents — CLAUDE.md is rebuilt separately via `rebuild_claude_md`.
-fn copy_prompts_sync(agents_dir: &Path, _claude_md: &Path, workspace_path: &str) -> Result<(), String> {
+fn copy_prompts_sync(
+    agents_dir: &Path,
+    plugins_dir: &Path,
+    _claude_md: &Path,
+    workspace_path: &str,
+) -> Result<(), String> {
     if agents_dir.is_dir() {
         copy_agents_to_claude_dir(agents_dir, workspace_path)?;
+    }
+    if plugins_dir.is_dir() {
+        copy_managed_plugins_to_claude_dir(plugins_dir, workspace_path)?;
     }
     Ok(())
 }
@@ -306,22 +388,27 @@ pub fn ensure_workspace_prompts_sync(
     }
 
     let (agents_dir, claude_md) = resolve_prompt_source_dirs(app_handle);
+    let plugins_dir = resolve_bundled_plugins_dir(app_handle);
 
-    if !agents_dir.is_dir() && !claude_md.is_file() {
+    if !agents_dir.is_dir() && !claude_md.is_file() && !plugins_dir.is_dir() {
         return Ok(());
     }
 
-    copy_prompts_sync(&agents_dir, &claude_md, workspace_path)?;
+    copy_prompts_sync(&agents_dir, &plugins_dir, &claude_md, workspace_path)?;
     mark_workspace_copied(workspace_path);
     Ok(())
 }
 
 /// Re-deploy only the bundled agents to `.claude/agents/`, preserving
-/// other contents of the `.claude/` directory (skills, CLAUDE.md, etc.).
+/// other contents of the `.claude/` directory (skills, agents, etc.).
 pub fn redeploy_agents(app_handle: &tauri::AppHandle, workspace_path: &str) -> Result<(), String> {
     let (agents_dir, _) = resolve_prompt_source_dirs(app_handle);
+    let plugins_dir = resolve_bundled_plugins_dir(app_handle);
     if agents_dir.is_dir() {
         copy_agents_to_claude_dir(&agents_dir, workspace_path)?;
+    }
+    if plugins_dir.is_dir() {
+        copy_managed_plugins_to_claude_dir(&plugins_dir, workspace_path)?;
     }
     Ok(())
 }
@@ -367,7 +454,7 @@ fn write_claude_md(
     workspace_path: &str,
     conn: &rusqlite::Connection,
 ) -> Result<(), String> {
-    let claude_md_path = Path::new(workspace_path).join(".claude").join("CLAUDE.md");
+    let claude_md_path = Path::new(workspace_path).join("CLAUDE.md");
 
     let skills_section = generate_skills_section(conn)?;
 
@@ -389,9 +476,6 @@ fn write_claude_md(
     final_content.push_str("\n\n");
     final_content.push_str(&customization);
 
-    let claude_dir = Path::new(workspace_path).join(".claude");
-    std::fs::create_dir_all(&claude_dir)
-        .map_err(|e| format!("Failed to create .claude dir: {}", e))?;
     std::fs::write(&claude_md_path, final_content)
         .map_err(|e| format!("Failed to write CLAUDE.md: {}", e))?;
     Ok(())
@@ -428,7 +512,7 @@ pub fn update_skills_section(
     workspace_path: &str,
     conn: &rusqlite::Connection,
 ) -> Result<(), String> {
-    let claude_md_path = Path::new(workspace_path).join(".claude").join("CLAUDE.md");
+    let claude_md_path = Path::new(workspace_path).join("CLAUDE.md");
     let content = if claude_md_path.is_file() {
         std::fs::read_to_string(&claude_md_path)
             .map_err(|e| format!("Failed to read CLAUDE.md: {}", e))?
@@ -447,23 +531,81 @@ pub fn update_skills_section(
     write_claude_md(&base, workspace_path, conn)
 }
 
-/// Copy agent .md files from flat agents/ directory to <workspace>/.claude/agents/.
-/// agents/{name}.md → .claude/agents/{name}.md
+/// Copy agent .md files from flat bundled agent source to <workspace>/.claude/agents/.
+/// agent-sources/agents/{name}.md → .claude/agents/{name}.md
 fn copy_agents_to_claude_dir(agents_src: &Path, workspace_path: &str) -> Result<(), String> {
     let claude_agents_dir = Path::new(workspace_path).join(".claude").join("agents");
+    if claude_agents_dir.is_dir() {
+        std::fs::remove_dir_all(&claude_agents_dir)
+            .map_err(|e| format!("Failed to clear .claude/agents dir: {}", e))?;
+    }
     std::fs::create_dir_all(&claude_agents_dir)
         .map_err(|e| format!("Failed to create .claude/agents dir: {}", e))?;
 
-    let entries = std::fs::read_dir(agents_src)
-        .map_err(|e| format!("Failed to read agents dir: {}", e))?;
+    let entries =
+        std::fs::read_dir(agents_src).map_err(|e| format!("Failed to read agents dir: {}", e))?;
     for entry in entries {
         let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) == Some("md") {
             let dest = claude_agents_dir.join(entry.file_name());
-            std::fs::copy(&path, &dest)
-                .map_err(|e| format!("Failed to copy {} to .claude/agents: {}", path.display(), e))?;
+            std::fs::copy(&path, &dest).map_err(|e| {
+                format!("Failed to copy {} to .claude/agents: {}", path.display(), e)
+            })?;
         }
+    }
+    Ok(())
+}
+
+/// Replace only app-managed plugins in `.claude/plugins` from bundled source.
+/// User-added plugins are preserved when they do not have the managed marker.
+fn copy_managed_plugins_to_claude_dir(plugins_src: &Path, workspace_path: &str) -> Result<(), String> {
+    const MANAGED_MARKER: &str = ".skill-builder-managed";
+    let claude_plugins_dir = Path::new(workspace_path).join(".claude").join("plugins");
+    std::fs::create_dir_all(&claude_plugins_dir)
+        .map_err(|e| format!("Failed to create .claude/plugins dir: {}", e))?;
+
+    let source_entries = std::fs::read_dir(plugins_src)
+        .map_err(|e| format!("Failed to read plugins dir: {}", e))?;
+    let mut source_plugin_names = std::collections::HashSet::new();
+    for entry in source_entries {
+        let entry = entry.map_err(|e| format!("Failed to read plugins entry: {}", e))?;
+        let src_path = entry.path();
+        if !src_path.is_dir() {
+            continue;
+        }
+        let plugin_name = entry.file_name().to_string_lossy().to_string();
+        source_plugin_names.insert(plugin_name);
+    }
+
+    // Remove stale managed plugins that are no longer present in source.
+    for entry in std::fs::read_dir(&claude_plugins_dir)
+        .map_err(|e| format!("Failed to read .claude/plugins dir: {}", e))?
+    {
+        let entry = entry.map_err(|e| format!("Failed to read .claude/plugins entry: {}", e))?;
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_string();
+        let is_managed = path.join(MANAGED_MARKER).is_file();
+        if is_managed && !source_plugin_names.contains(&name) {
+            std::fs::remove_dir_all(&path)
+                .map_err(|e| format!("Failed to remove stale managed plugin {}: {}", path.display(), e))?;
+        }
+    }
+
+    // Replace each managed plugin from source.
+    for plugin_name in source_plugin_names {
+        let src_plugin = plugins_src.join(&plugin_name);
+        let dst_plugin = claude_plugins_dir.join(&plugin_name);
+        if dst_plugin.exists() {
+            std::fs::remove_dir_all(&dst_plugin)
+                .map_err(|e| format!("Failed to replace managed plugin {}: {}", dst_plugin.display(), e))?;
+        }
+        copy_directory_recursive(&src_plugin, &dst_plugin)?;
+        std::fs::write(dst_plugin.join(MANAGED_MARKER), "managed by skill-builder startup\n")
+            .map_err(|e| format!("Failed to write managed plugin marker for {}: {}", plugin_name, e))?;
     }
     Ok(())
 }
@@ -511,31 +653,31 @@ fn parse_scope_recommendation(clarifications_path: &Path) -> bool {
     value["metadata"]["scope_recommendation"] == true
 }
 
-/// Check decisions.md for guard conditions:
-/// - decision_count: 0  → no decisions were derivable
-/// - contradictory_inputs: true → unresolvable contradictions detected
+/// Check decisions.json for guard conditions:
+/// - metadata.decision_count == 0  → no decisions were derivable
+/// - metadata.contradictory_inputs: true → unresolvable contradictions detected
 ///
 /// `contradictory_inputs: revised` is NOT a block — the user has reviewed
-/// and edited the flagged decisions; treat decisions.md as authoritative.
+/// and edited the flagged decisions; treat decisions.json as authoritative.
 ///
-/// Returns true if steps 5-6 should be disabled.
+/// Returns true if step 3 should be disabled.
 fn parse_decisions_guard(decisions_path: &Path) -> bool {
     let content = match std::fs::read_to_string(decisions_path) {
         Ok(c) => c,
         Err(_) => return false,
     };
-    if !content.starts_with("---") {
-        return false;
-    }
-    let after_start = &content[3..];
-    let end = match after_start.find("---") {
-        Some(pos) => pos,
-        None => return false,
+    let data: serde_json::Value = match serde_json::from_str(&content) {
+        Ok(v) => v,
+        Err(_) => return false,
     };
-    let frontmatter = &after_start[..end];
-    frontmatter
-        .lines()
-        .any(|line| line.trim() == "contradictory_inputs: true")
+    let metadata = &data["metadata"];
+    if metadata["decision_count"].as_i64() == Some(0) {
+        return true;
+    }
+    if metadata["contradictory_inputs"].as_bool() == Some(true) {
+        return true;
+    }
+    false
 }
 
 /// Derive agent name from prompt template.
@@ -548,6 +690,590 @@ fn derive_agent_name(workspace_path: &str, _purpose: &str, prompt_template: &str
         return name;
     }
     phase.to_string()
+}
+
+fn workflow_output_format_for_agent(agent_name: &str) -> Option<serde_json::Value> {
+    match agent_name {
+        "research-orchestrator" => Some(serde_json::json!({
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "required": [
+                    "status",
+                    "dimensions_selected",
+                    "question_count",
+                    "research_output"
+                ],
+                "properties": {
+                    "status": { "type": "string", "const": "research_complete" },
+                    "dimensions_selected": { "type": "integer", "minimum": 0 },
+                    "question_count": { "type": "integer", "minimum": 0 },
+                    "research_output": { "type": "object" }
+                },
+                "additionalProperties": true
+            }
+        })),
+        "detailed-research" => Some(serde_json::json!({
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "required": [
+                    "status",
+                    "refinement_count",
+                    "section_count",
+                    "clarifications_json"
+                ],
+                "properties": {
+                    "status": { "type": "string", "const": "detailed_research_complete" },
+                    "refinement_count": { "type": "integer", "minimum": 0 },
+                    "section_count": { "type": "integer", "minimum": 0 },
+                    "clarifications_json": { "type": "object" }
+                },
+                "additionalProperties": true
+            }
+        })),
+        "confirm-decisions" => Some(serde_json::json!({
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "required": ["version", "metadata", "decisions"],
+                "properties": {
+                    "version": { "type": "string" },
+                    "metadata": { "type": "object" },
+                    "decisions": { "type": "array" }
+                },
+                "additionalProperties": false
+            }
+        })),
+        "generate-skill" => Some(serde_json::json!({
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "required": ["status", "evaluations_markdown"],
+                "properties": {
+                    "status": { "type": "string", "const": "generated" },
+                    "evaluations_markdown": { "type": "string", "minLength": 1 }
+                },
+                "additionalProperties": false
+            }
+        })),
+        _ => None,
+    }
+}
+
+fn validate_clarifications_json(clarifications: &serde_json::Value) -> Result<(), String> {
+    let root = clarifications
+        .as_object()
+        .ok_or_else(|| "clarifications_json must be a JSON object".to_string())?;
+
+    let version = root
+        .get("version")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "clarifications_json.version must be a string".to_string())?;
+    if version.trim().is_empty() {
+        return Err("clarifications_json.version must not be empty".to_string());
+    }
+
+    let metadata = root
+        .get("metadata")
+        .and_then(|v| v.as_object())
+        .ok_or_else(|| "clarifications_json.metadata must be an object".to_string())?;
+    for field in [
+        "question_count",
+        "section_count",
+        "refinement_count",
+        "must_answer_count",
+    ] {
+        if metadata.get(field).and_then(|v| v.as_i64()).is_none() {
+            return Err(format!(
+                "clarifications_json.metadata.{} must be an integer",
+                field
+            ));
+        }
+    }
+    if metadata
+        .get("priority_questions")
+        .and_then(|v| v.as_array())
+        .is_none()
+    {
+        return Err("clarifications_json.metadata.priority_questions must be an array".to_string());
+    }
+
+    let sections = root
+        .get("sections")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| "clarifications_json.sections must be an array".to_string())?;
+    for (section_idx, section) in sections.iter().enumerate() {
+        let section_obj = section.as_object().ok_or_else(|| {
+            format!(
+                "clarifications_json.sections[{}] must be an object",
+                section_idx
+            )
+        })?;
+        if section_obj.get("id").and_then(|v| v.as_str()).is_none() {
+            return Err(format!(
+                "clarifications_json.sections[{}].id must be a string",
+                section_idx
+            ));
+        }
+        if section_obj.get("title").and_then(|v| v.as_str()).is_none() {
+            return Err(format!(
+                "clarifications_json.sections[{}].title must be a string",
+                section_idx
+            ));
+        }
+        let questions = section_obj
+            .get("questions")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| {
+                format!(
+                    "clarifications_json.sections[{}].questions must be an array",
+                    section_idx
+                )
+            })?;
+
+        for (question_idx, question) in questions.iter().enumerate() {
+            let question_obj = question.as_object().ok_or_else(|| {
+                format!(
+                    "clarifications_json.sections[{}].questions[{}] must be an object",
+                    section_idx, question_idx
+                )
+            })?;
+            for field in ["id", "title", "text"] {
+                if question_obj.get(field).and_then(|v| v.as_str()).is_none() {
+                    return Err(format!(
+                        "clarifications_json.sections[{}].questions[{}].{} must be a string",
+                        section_idx, question_idx, field
+                    ));
+                }
+            }
+            if question_obj
+                .get("must_answer")
+                .and_then(|v| v.as_bool())
+                .is_none()
+            {
+                return Err(format!(
+                    "clarifications_json.sections[{}].questions[{}].must_answer must be a boolean",
+                    section_idx, question_idx
+                ));
+            }
+            let choices = question_obj
+                .get("choices")
+                .and_then(|v| v.as_array())
+                .ok_or_else(|| {
+                    format!(
+                        "clarifications_json.sections[{}].questions[{}].choices must be an array",
+                        section_idx, question_idx
+                    )
+                })?;
+            for (choice_idx, choice) in choices.iter().enumerate() {
+                let choice_obj = choice.as_object().ok_or_else(|| {
+                    format!(
+                        "clarifications_json.sections[{}].questions[{}].choices[{}] must be an object",
+                        section_idx, question_idx, choice_idx
+                    )
+                })?;
+                for field in ["id", "text"] {
+                    if choice_obj.get(field).and_then(|v| v.as_str()).is_none() {
+                        return Err(format!(
+                            "clarifications_json.sections[{}].questions[{}].choices[{}].{} must be a string",
+                            section_idx, question_idx, choice_idx, field
+                        ));
+                    }
+                }
+                if choice_obj
+                    .get("is_other")
+                    .and_then(|v| v.as_bool())
+                    .is_none()
+                {
+                    return Err(format!(
+                        "clarifications_json.sections[{}].questions[{}].choices[{}].is_other must be a boolean",
+                        section_idx, question_idx, choice_idx
+                    ));
+                }
+            }
+            if question_obj
+                .get("refinements")
+                .and_then(|v| v.as_array())
+                .is_none()
+            {
+                return Err(format!(
+                    "clarifications_json.sections[{}].questions[{}].refinements must be an array",
+                    section_idx, question_idx
+                ));
+            }
+        }
+    }
+
+    if root.get("notes").and_then(|v| v.as_array()).is_none() {
+        return Err("clarifications_json.notes must be an array".to_string());
+    }
+    if let Some(value) = root.get("answer_evaluator_notes") {
+        if value.as_array().is_none() {
+            return Err(
+                "clarifications_json.answer_evaluator_notes must be an array when present"
+                    .to_string(),
+            );
+        }
+    }
+
+    Ok(())
+}
+
+fn materialize_workflow_step_output_value(
+    skill_root: &Path,
+    step_id: u32,
+    structured_output: &serde_json::Value,
+) -> Result<(), String> {
+    let payload = structured_output
+        .as_object()
+        .ok_or_else(|| "structured_output must be a JSON object".to_string())?;
+
+    let require_int = |field: &str| -> Result<i64, String> {
+        payload
+            .get(field)
+            .and_then(|v| v.as_i64())
+            .ok_or_else(|| format!("structured_output.{} must be an integer", field))
+    };
+
+    let require_const_status = |expected: &str| -> Result<(), String> {
+        let actual = payload
+            .get("status")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "structured_output.status must be a string".to_string())?;
+        if actual != expected {
+            return Err(format!(
+                "structured_output.status must be '{}' but got '{}'",
+                expected, actual
+            ));
+        }
+        Ok(())
+    };
+
+    let context_dir = skill_root.join("context");
+    std::fs::create_dir_all(&context_dir).map_err(|e| {
+        format!(
+            "Failed to create context directory '{}': {}",
+            context_dir.display(),
+            e
+        )
+    })?;
+
+    match step_id {
+        0 => {
+            require_const_status("research_complete")?;
+            let _ = require_int("dimensions_selected")?;
+            let _ = require_int("question_count")?;
+            let clarifications = payload
+                .get("research_output")
+                .ok_or_else(|| "structured_output.research_output is required".to_string())?;
+            validate_clarifications_json(clarifications)
+                .map_err(|e| format!("Invalid research_output: {}", e))?;
+            let clarifications_pretty = serde_json::to_string_pretty(clarifications)
+                .map_err(|e| format!("Failed to serialize research_output: {}", e))?;
+
+            let clarifications_path = context_dir.join("clarifications.json");
+            std::fs::write(&clarifications_path, clarifications_pretty).map_err(|e| {
+                format!(
+                    "Failed to write clarifications '{}': {}",
+                    clarifications_path.display(),
+                    e
+                )
+            })?;
+            Ok(())
+        }
+        1 => {
+            require_const_status("detailed_research_complete")?;
+            let _ = require_int("refinement_count")?;
+            let _ = require_int("section_count")?;
+            let clarifications = payload
+                .get("clarifications_json")
+                .ok_or_else(|| "structured_output.clarifications_json is required".to_string())?;
+            validate_clarifications_json(clarifications)
+                .map_err(|e| format!("Invalid clarifications_json: {}", e))?;
+            let clarifications_pretty = serde_json::to_string_pretty(clarifications)
+                .map_err(|e| format!("Failed to serialize clarifications_json: {}", e))?;
+
+            let clarifications_path = context_dir.join("clarifications.json");
+            std::fs::write(&clarifications_path, clarifications_pretty).map_err(|e| {
+                format!(
+                    "Failed to write clarifications '{}': {}",
+                    clarifications_path.display(),
+                    e
+                )
+            })?;
+            Ok(())
+        }
+        2 => {
+            let decisions_pretty = serde_json::to_string_pretty(&serde_json::Value::Object(payload.clone()))
+                .map_err(|e| format!("Failed to serialize decisions: {}", e))?;
+            let decisions_path = context_dir.join("decisions.json");
+            std::fs::write(&decisions_path, decisions_pretty).map_err(|e| {
+                format!(
+                    "Failed to write decisions '{}': {}",
+                    decisions_path.display(),
+                    e
+                )
+            })?;
+            Ok(())
+        }
+        3 => {
+            require_const_status("generated")?;
+            let evaluations_markdown = payload
+                .get("evaluations_markdown")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| {
+                    "structured_output.evaluations_markdown must be a string".to_string()
+                })?;
+            if evaluations_markdown.trim().is_empty() {
+                return Err("structured_output.evaluations_markdown must not be empty".to_string());
+            }
+            let evaluations_path = context_dir.join("evaluations.md");
+            std::fs::write(&evaluations_path, evaluations_markdown).map_err(|e| {
+                format!(
+                    "Failed to write evaluations '{}': {}",
+                    evaluations_path.display(),
+                    e
+                )
+            })?;
+            Ok(())
+        }
+        _ => Err(format!(
+            "materialize_workflow_step_output supports only steps 0-3; got {}",
+            step_id
+        )),
+    }
+}
+
+#[tauri::command]
+pub fn materialize_workflow_step_output(
+    skill_name: String,
+    step_id: u32,
+    structured_output: serde_json::Value,
+    db: tauri::State<'_, Db>,
+) -> Result<(), String> {
+    log::info!(
+        "[materialize_workflow_step_output] skill={} step={}",
+        skill_name,
+        step_id
+    );
+    let workspace_path = read_workspace_path(&db)
+        .ok_or_else(|| "Workspace path not configured. Please set it in Settings.".to_string())?;
+    let skill_root = Path::new(&workspace_path).join(&skill_name);
+    materialize_workflow_step_output_value(&skill_root, step_id, &structured_output)
+}
+
+fn answer_evaluator_output_format() -> serde_json::Value {
+    serde_json::json!({
+        "type": "json_schema",
+        "schema": {
+            "type": "object",
+            "required": [
+                "verdict",
+                "answered_count",
+                "empty_count",
+                "vague_count",
+                "contradictory_count",
+                "total_count",
+                "reasoning",
+                "per_question"
+            ],
+            "properties": {
+                "verdict": {
+                    "type": "string",
+                    "enum": ["sufficient", "mixed", "insufficient"]
+                },
+                "answered_count": { "type": "integer", "minimum": 0 },
+                "empty_count": { "type": "integer", "minimum": 0 },
+                "vague_count": { "type": "integer", "minimum": 0 },
+                "contradictory_count": { "type": "integer", "minimum": 0 },
+                "total_count": { "type": "integer", "minimum": 0 },
+                "reasoning": { "type": "string", "minLength": 1 },
+                "per_question": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["question_id", "verdict"],
+                        "properties": {
+                            "question_id": { "type": "string", "minLength": 1 },
+                            "verdict": {
+                                "type": "string",
+                                "enum": ["clear", "needs_refinement", "not_answered", "vague", "contradictory"]
+                            },
+                            "reason": { "type": "string" },
+                            "contradicts": { "type": "string" }
+                        },
+                        "additionalProperties": false,
+                        "allOf": [
+                            {
+                                "if": {
+                                    "properties": { "verdict": { "const": "contradictory" } },
+                                    "required": ["verdict"]
+                                },
+                                "then": { "required": ["contradicts"] }
+                            }
+                        ]
+                    }
+                }
+            },
+            "additionalProperties": false
+        }
+    })
+}
+
+fn validate_answer_evaluation_json(evaluation: &serde_json::Value) -> Result<(), String> {
+    let root = evaluation
+        .as_object()
+        .ok_or_else(|| "answer_evaluation must be a JSON object".to_string())?;
+
+    let verdict = root
+        .get("verdict")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "answer_evaluation.verdict must be a string".to_string())?;
+    if !["sufficient", "mixed", "insufficient"].contains(&verdict) {
+        return Err(
+            "answer_evaluation.verdict must be one of sufficient|mixed|insufficient".to_string(),
+        );
+    }
+
+    for field in [
+        "answered_count",
+        "empty_count",
+        "vague_count",
+        "contradictory_count",
+        "total_count",
+    ] {
+        if root.get(field).and_then(|v| v.as_i64()).is_none() {
+            return Err(format!("answer_evaluation.{} must be an integer", field));
+        }
+    }
+
+    let reasoning = root
+        .get("reasoning")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "answer_evaluation.reasoning must be a string".to_string())?;
+    if reasoning.trim().is_empty() {
+        return Err("answer_evaluation.reasoning must not be empty".to_string());
+    }
+
+    let per_question = root
+        .get("per_question")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| "answer_evaluation.per_question must be an array".to_string())?;
+    for (idx, entry) in per_question.iter().enumerate() {
+        let obj = entry
+            .as_object()
+            .ok_or_else(|| format!("answer_evaluation.per_question[{}] must be an object", idx))?;
+        if obj.get("question_id").and_then(|v| v.as_str()).is_none() {
+            return Err(format!(
+                "answer_evaluation.per_question[{}].question_id must be a string",
+                idx
+            ));
+        }
+        let pq_verdict = obj.get("verdict").and_then(|v| v.as_str()).ok_or_else(|| {
+            format!(
+                "answer_evaluation.per_question[{}].verdict must be a string",
+                idx
+            )
+        })?;
+        if ![
+            "clear",
+            "needs_refinement",
+            "not_answered",
+            "vague",
+            "contradictory",
+        ]
+        .contains(&pq_verdict)
+        {
+            return Err(format!(
+                "answer_evaluation.per_question[{}].verdict is invalid",
+                idx
+            ));
+        }
+        if pq_verdict == "vague" {
+            let reason = obj.get("reason").and_then(|v| v.as_str()).ok_or_else(|| {
+                format!(
+                    "answer_evaluation.per_question[{}].reason is required for vague verdict",
+                    idx
+                )
+            })?;
+            if reason.trim().is_empty() {
+                return Err(format!(
+                    "answer_evaluation.per_question[{}].reason must not be empty",
+                    idx
+                ));
+            }
+        }
+        if pq_verdict == "contradictory" {
+            let reason = obj
+                .get("reason")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| format!("answer_evaluation.per_question[{}].reason is required for contradictory verdict", idx))?;
+            if reason.trim().is_empty() {
+                return Err(format!(
+                    "answer_evaluation.per_question[{}].reason must not be empty",
+                    idx
+                ));
+            }
+            let contradicts = obj
+                .get("contradicts")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| format!("answer_evaluation.per_question[{}].contradicts is required for contradictory verdict", idx))?;
+            if contradicts.trim().is_empty() {
+                return Err(format!(
+                    "answer_evaluation.per_question[{}].contradicts must not be empty",
+                    idx
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn materialize_answer_evaluation_output_value(
+    workspace_dir: &Path,
+    structured_output: &serde_json::Value,
+) -> Result<(), String> {
+    validate_answer_evaluation_json(structured_output)
+        .map_err(|e| format!("Invalid answer evaluation output: {}", e))?;
+    std::fs::create_dir_all(workspace_dir).map_err(|e| {
+        format!(
+            "Failed to create workspace directory '{}': {}",
+            workspace_dir.display(),
+            e
+        )
+    })?;
+    let output_path = workspace_dir.join("answer-evaluation.json");
+    let content = serde_json::to_string_pretty(structured_output)
+        .map_err(|e| format!("Failed to serialize answer evaluation output: {}", e))?;
+    std::fs::write(&output_path, content).map_err(|e| {
+        format!(
+            "Failed to write answer evaluation output '{}': {}",
+            output_path.display(),
+            e
+        )
+    })?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn materialize_answer_evaluation_output(
+    skill_name: String,
+    workspace_path: String,
+    structured_output: serde_json::Value,
+) -> Result<(), String> {
+    log::info!(
+        "[materialize_answer_evaluation_output] skill={}",
+        skill_name
+    );
+    log::debug!(
+        "[materialize_answer_evaluation_output] skill={} structured_output={}",
+        skill_name,
+        structured_output
+    );
+    let workspace_dir = Path::new(&workspace_path).join(&skill_name);
+    materialize_answer_evaluation_output_value(&workspace_dir, &structured_output)
 }
 
 /// Write `user-context.md` to the context directory so that sub-agents
@@ -618,7 +1344,11 @@ pub fn format_user_context(
     if let Some(ij) = intake_json {
         if let Ok(intake) = serde_json::from_str::<serde_json::Value>(ij) {
             // New unified field
-            if let Some(v) = intake.get("context").and_then(|v| v.as_str()).filter(|v| !v.is_empty()) {
+            if let Some(v) = intake
+                .get("context")
+                .and_then(|v| v.as_str())
+                .filter(|v| !v.is_empty())
+            {
                 sections.push(format!("### What Claude Needs to Know\n{}", v));
             }
             // Legacy fields (backwards compat for existing skills)
@@ -629,7 +1359,11 @@ pub fn format_user_context(
                 ("challenges", "Key Challenges"),
                 ("audience", "Target Audience"),
             ] {
-                if let Some(v) = intake.get(key).and_then(|v| v.as_str()).filter(|v| !v.is_empty()) {
+                if let Some(v) = intake
+                    .get(key)
+                    .and_then(|v| v.as_str())
+                    .filter(|v| !v.is_empty())
+                {
                     sections.push(format!("### {}\n{}", label, v));
                 }
             }
@@ -678,7 +1412,20 @@ pub fn write_user_context_file(
     user_invocable: Option<bool>,
     disable_model_invocation: Option<bool>,
 ) {
-    let Some(ctx) = format_user_context(Some(skill_name), tags, industry, function_role, intake_json, description, purpose, version, skill_model, argument_hint, user_invocable, disable_model_invocation) else {
+    let Some(ctx) = format_user_context(
+        Some(skill_name),
+        tags,
+        industry,
+        function_role,
+        intake_json,
+        description,
+        purpose,
+        version,
+        skill_model,
+        argument_hint,
+        user_invocable,
+        disable_model_invocation,
+    ) else {
         return;
     };
 
@@ -716,30 +1463,44 @@ pub fn write_user_context_file(
     }
 }
 
+/// Writes `workspace_dir/.skill_output_dir` with the absolute path to the skill output directory.
+/// Agents read this file to derive the skill output path; call before every agent run so the
+/// prompt only needs skill name and workspace_dir.
+pub(crate) fn write_skill_output_dir_file(workspace_dir: &Path, skill_output_dir: &Path) {
+    let path = workspace_dir.join(".skill_output_dir");
+    let content = skill_output_dir.to_string_lossy().replace('\\', "/");
+    if let Err(e) = std::fs::write(&path, &content) {
+        log::warn!(
+            "[write_skill_output_dir_file] Failed to write {}: {}",
+            path.display(),
+            e
+        );
+    } else {
+        log::debug!(
+            "[write_skill_output_dir_file] Wrote .skill_output_dir ({} bytes) to {}",
+            content.len(),
+            workspace_dir.display()
+        );
+    }
+}
+
 fn build_prompt(
     skill_name: &str,
     workspace_path: &str,
-    skills_path: &str,
+    _skills_path: &str,
     author_login: Option<&str>,
     created_at: Option<&str>,
     max_dimensions: u32,
 ) -> String {
     let workspace_dir = Path::new(workspace_path).join(skill_name);
-    let context_dir = Path::new(skills_path).join(skill_name).join("context");
-    let skill_output_dir = Path::new(skills_path).join(skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
-    let context_str = context_dir.to_string_lossy().replace('\\', "/");
-    let skill_output_str = skill_output_dir.to_string_lossy().replace('\\', "/");
     let mut prompt = format!(
-        "The skill name is: {}. \
-         The workspace directory is: {}. \
-         The context directory is: {}. \
-         The skill output directory (SKILL.md and references/) is: {}. \
+        "The skill name is: {}. The workspace directory is: {}. \
+         Read user-context.md and .skill_output_dir from the workspace directory first. \
+         Derive context_dir as workspace_dir/context. The skill output directory (SKILL.md and references/) is the path in .skill_output_dir. \
          All directories already exist — never create directories with mkdir or any other method. Never list directories with ls. Read only the specific files named in your instructions and write files directly.",
         skill_name,
         workspace_str,
-        context_str,
-        skill_output_str,
     );
 
     if let Some(author) = author_login {
@@ -754,9 +1515,12 @@ fn build_prompt(
         }
     }
 
-    prompt.push_str(&format!(" The maximum research dimensions before scope warning is: {}.", max_dimensions));
+    prompt.push_str(&format!(
+        " The maximum research dimensions before scope warning is: {}.",
+        max_dimensions
+    ));
 
-    prompt.push_str(" Read user-context.md from the workspace directory for purpose, description, and all user context. The workspace directory only contains user-context.md — ignore everything else (logs/, etc.).");
+    prompt.push_str(" The workspace directory may contain other files written by the workflow (such as answer-evaluation.json) — read only the files explicitly named in your agent instructions. Do not read the logs/ directory or any file not named in your instructions.");
 
     prompt
 }
@@ -766,22 +1530,39 @@ fn read_skills_path(db: &tauri::State<'_, Db>) -> Option<String> {
     crate::db::read_settings(&conn).ok()?.skills_path
 }
 
+fn read_workspace_path(db: &tauri::State<'_, Db>) -> Option<String> {
+    let conn = db.0.lock().ok()?;
+    crate::db::read_settings(&conn).ok()?.workspace_path
+}
+
+fn workspace_context_dir(workspace_path: &str, skill_name: &str) -> PathBuf {
+    Path::new(workspace_path).join(skill_name).join("context")
+}
+
 fn thinking_budget_for_step(step_id: u32) -> Option<u32> {
     match step_id {
-        0 => Some(8_000),   // research
-        1 => Some(8_000),   // detailed-research
-        2 => Some(32_000),  // confirm-decisions — highest priority
-        3 => Some(16_000),  // generate-skill — complex synthesis
+        0 => Some(8_000),  // research
+        1 => Some(8_000),  // detailed-research
+        2 => Some(32_000), // confirm-decisions — highest priority
+        3 => Some(16_000), // generate-skill — complex synthesis
         _ => None,
     }
 }
 
-pub fn build_betas(thinking_budget: Option<u32>, model: &str) -> Option<Vec<String>> {
+pub fn build_betas(
+    thinking_budget: Option<u32>,
+    model: &str,
+    interleaved_thinking_beta: bool,
+) -> Option<Vec<String>> {
     let mut betas = Vec::new();
-    if thinking_budget.is_some() && !model.contains("opus") {
+    if interleaved_thinking_beta && thinking_budget.is_some() && !model.contains("opus") {
         betas.push("interleaved-thinking-2025-05-14".to_string());
     }
-    if betas.is_empty() { None } else { Some(betas) }
+    if betas.is_empty() {
+        None
+    } else {
+        Some(betas)
+    }
 }
 
 /// Generate a unique agent ID from skill name, label, and timestamp.
@@ -793,16 +1574,18 @@ fn make_agent_id(skill_name: &str, label: &str) -> String {
     format!("{}-{}-{}", skill_name, label, ts)
 }
 
-/// Core logic for validating decisions.md existence — testable without tauri::State.
+/// Core logic for validating decisions.json existence — testable without tauri::State.
 /// Checks in order: skill output dir (skillsPath), workspace dir.
 /// Returns Ok(()) if found, Err with a clear message if missing.
 fn validate_decisions_exist_inner(
     skill_name: &str,
-    _workspace_path: &str,
-    skills_path: &str,
+    workspace_path: &str,
+    _skills_path: &str,
 ) -> Result<(), String> {
-    // skills_path is required — no workspace fallback
-    let path = Path::new(skills_path).join(skill_name).join("context").join("decisions.md");
+    let path = Path::new(workspace_path)
+        .join(skill_name)
+        .join("context")
+        .join("decisions.json");
     if path.exists() {
         let content = std::fs::read_to_string(&path).unwrap_or_default();
         if !content.trim().is_empty() {
@@ -811,7 +1594,7 @@ fn validate_decisions_exist_inner(
     }
 
     Err(
-        "Cannot start Generate Skill step: decisions.md was not found on the filesystem. \
+        "Cannot start Generate Skill step: decisions.json was not found on the filesystem. \
          The Confirm Decisions step (step 2) must create a decisions file before the Generate Skill step can run. \
          Please re-run the Confirm Decisions step first."
             .to_string(),
@@ -824,6 +1607,9 @@ struct WorkflowSettings {
     api_key: String,
     preferred_model: String,
     extended_thinking: bool,
+    interleaved_thinking_beta: bool,
+    sdk_effort: Option<String>,
+    fallback_model: Option<String>,
     purpose: String,
     tags: Vec<String>,
     author_login: Option<String>,
@@ -851,16 +1637,19 @@ fn read_workflow_settings(
 
     // Read all settings in one pass
     let settings = crate::db::read_settings_hydrated(&conn)?;
-    let skills_path = settings.skills_path
-        .ok_or_else(|| "Skills path not configured. Please set it in Settings before running workflow steps.".to_string())?;
+    let skills_path = settings.skills_path.ok_or_else(|| {
+        "Skills path not configured. Please set it in Settings before running workflow steps."
+            .to_string()
+    })?;
     let api_key = match settings.anthropic_api_key {
         Some(k) => k,
         None => return Err("Anthropic API key not configured".to_string()),
     };
-    let preferred_model = resolve_model_id(
-        settings.preferred_model.as_deref().unwrap_or("sonnet")
-    );
+    let preferred_model = resolve_model_id(settings.preferred_model.as_deref().unwrap_or("sonnet"));
     let extended_thinking = settings.extended_thinking;
+    let interleaved_thinking_beta = settings.interleaved_thinking_beta;
+    let sdk_effort = settings.sdk_effort.clone();
+    let fallback_model = Some(preferred_model.clone());
     let max_dimensions = settings.max_dimensions;
     let industry = settings.industry;
     let function_role = settings.function_role;
@@ -896,6 +1685,9 @@ fn read_workflow_settings(
         api_key,
         preferred_model,
         extended_thinking,
+        interleaved_thinking_beta,
+        sdk_effort,
+        fallback_model,
         purpose,
         tags,
         author_login,
@@ -949,6 +1741,10 @@ async fn run_workflow_step_inner(
         settings.disable_model_invocation,
     );
 
+    let workspace_dir = Path::new(workspace_path).join(skill_name);
+    let skill_output_dir = Path::new(&settings.skills_path).join(skill_name);
+    write_skill_output_dir_file(&workspace_dir, &skill_output_dir);
+
     let prompt = build_prompt(
         skill_name,
         workspace_path,
@@ -957,25 +1753,53 @@ async fn run_workflow_step_inner(
         settings.created_at.as_deref(),
         settings.max_dimensions,
     );
-    log::debug!("[run_workflow_step] prompt for step {}: {}", step_id, prompt);
+    log::debug!(
+        "[run_workflow_step] prompt for step {}: {}",
+        step_id,
+        prompt
+    );
 
     let agent_name = derive_agent_name(workspace_path, &settings.purpose, &step.prompt_template);
     let agent_id = make_agent_id(skill_name, &format!("step{}", step_id));
-    log::info!("run_workflow_step: skill={} step={} model={}", skill_name, step_id, settings.preferred_model);
+    log::info!(
+        "run_workflow_step: skill={} step={} model={}",
+        skill_name,
+        step_id,
+        settings.preferred_model
+    );
+
+    let required_plugins = if agent_name == "research-orchestrator" {
+        Some(vec!["skill-content-researcher".to_string()])
+    } else {
+        None
+    };
 
     let config = SidecarConfig {
         prompt,
-        model: Some(settings.preferred_model.clone()),
+        model: None,
         api_key: settings.api_key.clone(),
         cwd: workspace_path.to_string(),
         allowed_tools: Some(step.allowed_tools),
         max_turns: Some(step.max_turns),
         permission_mode: Some("bypassPermissions".to_string()),
-        session_id: None,
-        betas: build_betas(thinking_budget, &settings.preferred_model),
-        max_thinking_tokens: thinking_budget,
+        betas: build_betas(
+            thinking_budget,
+            &settings.preferred_model,
+            settings.interleaved_thinking_beta,
+        ),
+        thinking: thinking_budget.map(|budget| {
+            serde_json::json!({
+                "type": "enabled",
+                "budgetTokens": budget
+            })
+        }),
+        fallback_model: settings.fallback_model.clone(),
+        effort: settings.sdk_effort.clone(),
+        output_format: workflow_output_format_for_agent(&agent_name),
+        prompt_suggestions: None,
         path_to_claude_code_executable: None,
         agent_name: Some(agent_name),
+        required_plugins,
         conversation_history: None,
     };
 
@@ -1003,17 +1827,33 @@ pub async fn run_workflow_step(
     workspace_path: String,
 ) -> Result<String, String> {
     log::info!("[run_workflow_step] skill={} step={}", skill_name, step_id);
+    crate::commands::workflow_lifecycle::validate_run_request(
+        &skill_name,
+        step_id,
+        &workspace_path,
+    )?;
     // Ensure prompt files exist in workspace before running
     ensure_workspace_prompts(&app, &workspace_path).await?;
 
-    // Deploy purpose-resolved skills for research, validate, and skill-building.
-    // This overwrites the bundled copies if a workspace skill with a matching purpose is active.
+    // Deploy purpose-resolved bundled skills.
+    // Research is plugin-owned, so only validate and skill-building are deployed from bundled skills.
     {
         let bundled_skills_dir = resolve_bundled_skills_dir(&app);
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        deploy_skill_for_workflow(&conn, &workspace_path, &bundled_skills_dir, "research", "research");
-        deploy_skill_for_workflow(&conn, &workspace_path, &bundled_skills_dir, "validate-skill", "validate");
-        deploy_skill_for_workflow(&conn, &workspace_path, &bundled_skills_dir, "skill-builder-practices", "skill-building");
+        deploy_skill_for_workflow(
+            &conn,
+            &workspace_path,
+            &bundled_skills_dir,
+            "validate-skill",
+            "validate",
+        );
+        deploy_skill_for_workflow(
+            &conn,
+            &workspace_path,
+            &bundled_skills_dir,
+            "skill-creator",
+            "skill-building",
+        );
     }
 
     let settings = read_workflow_settings(&db, &skill_name, step_id, &workspace_path)?;
@@ -1025,7 +1865,7 @@ pub async fn run_workflow_step(
     );
 
     // Gate: reject disabled steps when guard conditions are active
-    let context_dir = Path::new(&settings.skills_path)
+    let context_dir = Path::new(&workspace_path)
         .join(&skill_name)
         .join("context");
 
@@ -1042,11 +1882,11 @@ pub async fn run_workflow_step(
     }
 
     if step_id >= 3 {
-        let decisions_path = context_dir.join("decisions.md");
+        let decisions_path = context_dir.join("decisions.json");
         if parse_decisions_guard(&decisions_path) {
             return Err(format!(
                 "Step {} is disabled: the reasoning agent found unresolvable \
-                 contradictions in decisions.md. Reset to step 2 and revise \
+                 contradictions in decisions.json. Reset to step 2 and revise \
                  your answers before retrying.",
                 step_id
             ));
@@ -1055,9 +1895,12 @@ pub async fn run_workflow_step(
 
     // Step 0 fresh start — wipe the context directory and all artifacts so
     // the agent doesn't see stale files from a previous workflow run.
-    // Context lives in skills_path (not workspace_path).
+    // Context lives in workspace_path.
     if step_id == 0 && context_dir.is_dir() {
-        log::debug!("[run_workflow_step] step 0: wiping context dir {}", context_dir.display());
+        log::debug!(
+            "[run_workflow_step] step 0: wiping context dir {}",
+            context_dir.display()
+        );
         let _ = std::fs::remove_dir_all(&context_dir);
         let _ = std::fs::create_dir_all(&context_dir);
     }
@@ -1087,7 +1930,10 @@ pub async fn package_skill(
     let source_dir = Path::new(&skills_path).join(&skill_name);
 
     if !source_dir.exists() {
-        log::error!("package_skill: skill directory not found: {}", source_dir.display());
+        log::error!(
+            "package_skill: skill directory not found: {}",
+            source_dir.display()
+        );
         return Err(format!(
             "Skill directory not found: {}",
             source_dir.display()
@@ -1096,15 +1942,13 @@ pub async fn package_skill(
 
     let output_path = source_dir.join(format!("{}.skill", skill_name));
 
-    let result = tokio::task::spawn_blocking(move || {
-        create_skill_zip(&source_dir, &output_path)
-    })
-    .await
-    .map_err(|e| {
-        let msg = format!("Packaging task failed: {}", e);
-        log::error!("package_skill: {}", msg);
-        msg
-    })??;
+    let result = tokio::task::spawn_blocking(move || create_skill_zip(&source_dir, &output_path))
+        .await
+        .map_err(|e| {
+            let msg = format!("Packaging task failed: {}", e);
+            log::error!("package_skill: {}", msg);
+            msg
+        })??;
 
     Ok(result)
 }
@@ -1134,10 +1978,7 @@ fn copy_directory_recursive(src: &Path, dest: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn create_skill_zip(
-    source_dir: &Path,
-    output_path: &Path,
-) -> Result<PackageResult, String> {
+fn create_skill_zip(source_dir: &Path, output_path: &Path) -> Result<PackageResult, String> {
     let file = std::fs::File::create(output_path)
         .map_err(|e| format!("Failed to create zip file: {}", e))?;
     let mut zip = zip::ZipWriter::new(file);
@@ -1197,11 +2038,7 @@ fn add_dir_to_zip(
     for entry in entries {
         let entry = entry.map_err(|e| format!("Failed to read dir entry: {}", e))?;
         let path = entry.path();
-        let name = format!(
-            "{}/{}",
-            prefix,
-            entry.file_name().to_string_lossy()
-        );
+        let name = format!("{}/{}", prefix, entry.file_name().to_string_lossy());
 
         if path.is_dir() {
             add_dir_to_zip(zip, &path, &name, options)?;
@@ -1239,7 +2076,12 @@ pub fn save_workflow_state(
     step_statuses: Vec<StepStatusUpdate>,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
-    log::info!("[save_workflow_state] skill={} step={} status={}", skill_name, current_step, status);
+    log::info!(
+        "[save_workflow_state] skill={} step={} status={}",
+        skill_name,
+        current_step,
+        status
+    );
     let conn = db.0.lock().map_err(|e| {
         log::error!("[save_workflow_state] Failed to acquire DB lock: {}", e);
         e.to_string()
@@ -1265,7 +2107,13 @@ pub fn save_workflow_state(
         status
     };
 
-    crate::db::save_workflow_run(&conn, &skill_name, current_step, &effective_status, &purpose)?;
+    crate::db::save_workflow_run(
+        &conn,
+        &skill_name,
+        current_step,
+        &effective_status,
+        &purpose,
+    )?;
     for step in &step_statuses {
         crate::db::save_workflow_step(&conn, &skill_name, step.step_id, &step.status)?;
     }
@@ -1275,10 +2123,14 @@ pub fn save_workflow_state(
     // nothing changed on disk, so redundant calls are cheap.
     let has_completed_step = step_statuses.iter().any(|s| s.status == "completed");
     if has_completed_step {
-        log::info!("[save_workflow_state] Step completed for '{}', checking git auto-commit", skill_name);
+        log::info!(
+            "[save_workflow_state] Step completed for '{}', checking git auto-commit",
+            skill_name
+        );
         match crate::db::read_settings(&conn) {
             Ok(settings) => {
-                let skills_path = settings.skills_path
+                let skills_path = settings
+                    .skills_path
                     .ok_or_else(|| "Skills path not configured".to_string())?;
                 let completed_steps: Vec<i32> = step_statuses
                     .iter()
@@ -1299,7 +2151,10 @@ pub fn save_workflow_state(
                 }
             }
             Err(e) => {
-                log::warn!("[save_workflow_state] Failed to read settings — skipping git auto-commit: {}", e);
+                log::warn!(
+                    "[save_workflow_state] Failed to read settings — skipping git auto-commit: {}",
+                    e
+                );
             }
         }
     }
@@ -1310,12 +2165,9 @@ pub fn save_workflow_state(
 /// Output files produced by each step, relative to the skill directory.
 pub fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
     match step_id {
-        0 => vec![
-            "context/research-plan.md",
-            "context/clarifications.json",
-        ],
-        1 => vec![],  // Step 1 edits clarifications.json in-place (no unique artifact)
-        2 => vec!["context/decisions.md"],
+        0 => vec!["context/clarifications.json"], // research-plan.md removed; plan embedded in clarifications metadata.research_plan
+        1 => vec![], // Step 1 edits clarifications.json in-place (no unique artifact)
+        2 => vec!["context/decisions.json"], // was decisions.md; now structured JSON
         3 => vec!["SKILL.md"], // Also has references/ dir; path is relative to skill output dir
         _ => vec![],
     }
@@ -1327,7 +2179,7 @@ pub fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
 /// clarifications.json in-place and has no unique output file to check.
 #[tauri::command]
 pub fn verify_step_output(
-    _workspace_path: String,
+    workspace_path: String,
     skill_name: String,
     step_id: u32,
     db: tauri::State<'_, Db>,
@@ -1342,8 +2194,11 @@ pub fn verify_step_output(
     let skills_path = read_skills_path(&db)
         .ok_or_else(|| "Skills path not configured. Please set it in Settings.".to_string())?;
 
-    // skills_path is required — single code path, no workspace fallback
-    let target_dir = Path::new(&skills_path).join(&skill_name);
+    let target_dir = if step_id == 3 {
+        Path::new(&skills_path).join(&skill_name)
+    } else {
+        Path::new(&workspace_path).join(&skill_name)
+    };
     let has_output = if step_id == 3 {
         target_dir.join("SKILL.md").exists()
     } else {
@@ -1359,13 +2214,11 @@ pub fn get_disabled_steps(
     db: tauri::State<'_, Db>,
 ) -> Result<Vec<u32>, String> {
     log::info!("[get_disabled_steps] skill={}", skill_name);
-    let skills_path = read_skills_path(&db)
-        .ok_or_else(|| "Skills path not configured".to_string())?;
-    let context_dir = Path::new(&skills_path)
-        .join(&skill_name)
-        .join("context");
+    let workspace_path =
+        read_workspace_path(&db).ok_or_else(|| "Workspace path not configured".to_string())?;
+    let context_dir = Path::new(&workspace_path).join(&skill_name).join("context");
     let clarifications_path = context_dir.join("clarifications.json");
-    let decisions_path = context_dir.join("decisions.md");
+    let decisions_path = context_dir.join("decisions.json");
 
     if parse_scope_recommendation(&clarifications_path) {
         Ok(vec![1, 2, 3])
@@ -1374,6 +2227,84 @@ pub fn get_disabled_steps(
     } else {
         Ok(vec![])
     }
+}
+
+#[tauri::command]
+pub fn get_clarifications_content(
+    skill_name: String,
+    workspace_path: String,
+) -> Result<String, String> {
+    let path = workspace_context_dir(&workspace_path, &skill_name).join("clarifications.json");
+    std::fs::read_to_string(&path).map_err(|e| {
+        format!(
+            "Failed to read clarifications from '{}': {}",
+            path.display(),
+            e
+        )
+    })
+}
+
+#[tauri::command]
+pub fn save_clarifications_content(
+    skill_name: String,
+    workspace_path: String,
+    content: String,
+) -> Result<(), String> {
+    let parsed: serde_json::Value =
+        serde_json::from_str(&content).map_err(|e| format!("Invalid clarifications JSON: {}", e))?;
+    validate_clarifications_json(&parsed)
+        .map_err(|e| format!("Invalid clarifications JSON: {}", e))?;
+    let path = workspace_context_dir(&workspace_path, &skill_name).join("clarifications.json");
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create context directory '{}': {}", parent.display(), e))?;
+    }
+    std::fs::write(&path, serde_json::to_string_pretty(&parsed).unwrap_or(content)).map_err(|e| {
+        format!(
+            "Failed to write clarifications to '{}': {}",
+            path.display(),
+            e
+        )
+    })
+}
+
+#[tauri::command]
+pub fn get_decisions_content(skill_name: String, workspace_path: String) -> Result<String, String> {
+    let path = workspace_context_dir(&workspace_path, &skill_name).join("decisions.json");
+    std::fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read decisions from '{}': {}", path.display(), e))
+}
+
+#[tauri::command]
+pub fn save_decisions_content(
+    skill_name: String,
+    workspace_path: String,
+    content: String,
+) -> Result<(), String> {
+    if content.trim().is_empty() {
+        return Err("decisions.json content cannot be empty".to_string());
+    }
+    let path = workspace_context_dir(&workspace_path, &skill_name).join("decisions.json");
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create context directory '{}': {}", parent.display(), e))?;
+    }
+    std::fs::write(&path, content)
+        .map_err(|e| format!("Failed to write decisions to '{}': {}", path.display(), e))
+}
+
+#[tauri::command]
+pub fn get_context_file_content(
+    skill_name: String,
+    workspace_path: String,
+    file_name: String,
+) -> Result<String, String> {
+    if file_name.contains('/') || file_name.contains('\\') || file_name.contains("..") {
+        return Err("Invalid context file name".to_string());
+    }
+    let path = workspace_context_dir(&workspace_path, &skill_name).join(file_name);
+    std::fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read context file '{}': {}", path.display(), e))
 }
 
 /// Run the answer-evaluator agent (Haiku) to assess clarification answer quality.
@@ -1406,17 +2337,25 @@ pub async fn run_answer_evaluator(
                 return Err("Anthropic API key not configured".to_string());
             }
         };
-        let sp = settings.skills_path.ok_or_else(|| {
-            log::error!("run_answer_evaluator: skills_path not configured");
-            "Skills path not configured".to_string()
+        let _wp = settings.workspace_path.ok_or_else(|| {
+            log::error!("run_answer_evaluator: workspace_path not configured");
+            "Workspace path not configured".to_string()
         })?;
+        let sp = settings.skills_path.unwrap_or_else(|| workspace_path.clone());
         let run_row = crate::db::get_workflow_run(&conn, &skill_name)
             .ok()
             .flatten();
         let ij = run_row.as_ref().and_then(|r| r.intake_json.clone());
         // Answer evaluator is a lightweight gate — always use Haiku for cost efficiency.
         let model = resolve_model_id("haiku");
-        (key, sp, settings.industry, settings.function_role, ij, model)
+        (
+            key,
+            sp,
+            settings.industry,
+            settings.function_role,
+            ij,
+            model,
+        )
     };
 
     // Write user-context.md so the agent can read it (same as workflow steps)
@@ -1427,44 +2366,58 @@ pub async fn run_answer_evaluator(
         industry.as_deref(),
         function_role.as_deref(),
         intake_json.as_deref(),
-        None, None, None, None, None, None, None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
     );
 
-    let context_dir = std::path::Path::new(&skills_path)
-        .join(&skill_name)
-        .join("context");
-    let workspace_dir = std::path::Path::new(&workspace_path).join(&skill_name);
-    let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
-    let context_str = context_dir.to_string_lossy().replace('\\', "/");
+    let workspace_dir = Path::new(&workspace_path).join(&skill_name);
+    let skill_output_dir = Path::new(&skills_path).join(&skill_name);
+    write_skill_output_dir_file(&workspace_dir, &skill_output_dir);
 
-    // Point agent at workspace and context dirs; user-context.md is already written.
+    let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
+
+    // SDK calling protocol: only skill name and workspace_dir; agent reads user-context and .skill_output_dir first.
     let prompt = format!(
-        "The workspace directory is: {workspace}. \
-         The context directory is: {context}. \
+        "The skill name is: {}. The workspace directory is: {}. \
+         Read user-context.md and .skill_output_dir from the workspace directory first. \
+         Derive context_dir as workspace_dir/context. \
          All directories already exist — do not create any directories. \
-         Read {workspace}/user-context.md for purpose, description, and all user context. Use it to evaluate answers in the user's specific domain.",
-        workspace = workspace_str,
-        context = context_str,
+         Use user-context.md to evaluate answers in the user's specific domain.",
+        skill_name,
+        workspace_str,
     );
 
     log::debug!("run_answer_evaluator: prompt={}", prompt);
-    log::info!("run_answer_evaluator: skill={} model={}", skill_name, preferred_model);
+    log::info!(
+        "run_answer_evaluator: skill={} model={}",
+        skill_name,
+        preferred_model
+    );
 
     let agent_id = make_agent_id(&skill_name, "gate-eval");
 
     let config = SidecarConfig {
         prompt,
-        model: Some(preferred_model),
+        model: None,
         api_key,
         cwd: workspace_path.clone(),
-        allowed_tools: Some(vec!["Read".to_string(), "Write".to_string()]),
+        allowed_tools: Some(vec!["Read".to_string()]),
         max_turns: Some(20),
         permission_mode: Some("bypassPermissions".to_string()),
-        session_id: None,
         betas: None,
-        max_thinking_tokens: None,
+        thinking: None,
+        fallback_model: None,
+        effort: None,
+        output_format: Some(answer_evaluator_output_format()),
+        prompt_suggestions: None,
         path_to_claude_code_executable: None,
         agent_name: Some("answer-evaluator".to_string()),
+        required_plugins: None,
         conversation_history: None,
     };
 
@@ -1491,10 +2444,10 @@ pub fn autofill_clarifications(
 ) -> Result<u32, String> {
     log::info!("autofill_clarifications: skill={}", skill_name);
 
-    let skills_path = read_skills_path(&db)
-        .ok_or_else(|| "Skills path not configured".to_string())?;
+    let workspace_path =
+        read_workspace_path(&db).ok_or_else(|| "Workspace path not configured".to_string())?;
 
-    let clarifications_path = Path::new(&skills_path)
+    let clarifications_path = Path::new(&workspace_path)
         .join(&skill_name)
         .join("context")
         .join("clarifications.json");
@@ -1545,16 +2498,13 @@ pub fn log_gate_decision(skill_name: String, verdict: String, decision: String) 
 /// Auto-fill empty refinement answers in clarifications.json.
 /// Top-level Q-level answers are left untouched. Returns the number of fields auto-filled.
 #[tauri::command]
-pub fn autofill_refinements(
-    skill_name: String,
-    db: tauri::State<'_, Db>,
-) -> Result<u32, String> {
+pub fn autofill_refinements(skill_name: String, db: tauri::State<'_, Db>) -> Result<u32, String> {
     log::info!("autofill_refinements: skill={}", skill_name);
 
-    let skills_path = read_skills_path(&db)
-        .ok_or_else(|| "Skills path not configured".to_string())?;
+    let workspace_path =
+        read_workspace_path(&db).ok_or_else(|| "Workspace path not configured".to_string())?;
 
-    let clarifications_path = Path::new(&skills_path)
+    let clarifications_path = Path::new(&workspace_path)
         .join(&skill_name)
         .join("context")
         .join("clarifications.json");
@@ -1606,15 +2556,21 @@ fn autofill_refinement_answers(content: &str) -> (String, u32) {
         for section in sections.iter_mut() {
             if let Some(questions) = section.get_mut("questions").and_then(|q| q.as_array_mut()) {
                 for question in questions.iter_mut() {
-                    if let Some(refinements) = question.get_mut("refinements").and_then(|r| r.as_array_mut()) {
+                    if let Some(refinements) = question
+                        .get_mut("refinements")
+                        .and_then(|r| r.as_array_mut())
+                    {
                         for refinement in refinements.iter_mut() {
-                            let answer_choice_empty = refinement.get("answer_choice").is_none_or(|v| v.is_null());
+                            let answer_choice_empty =
+                                refinement.get("answer_choice").is_none_or(|v| v.is_null());
                             let answer_text_empty = refinement.get("answer_text").is_none_or(|v| {
                                 v.is_null() || v.as_str().is_some_and(|s| s.is_empty())
                             });
 
                             if answer_choice_empty && answer_text_empty {
-                                if let Some(choices) = refinement.get("choices").and_then(|c| c.as_array()) {
+                                if let Some(choices) =
+                                    refinement.get("choices").and_then(|c| c.as_array())
+                                {
                                     if let Some(first_non_other) = choices.iter().find(|c| {
                                         c.get("is_other").and_then(|v| v.as_bool()) != Some(true)
                                     }) {
@@ -1656,16 +2612,18 @@ fn autofill_answers(content: &str) -> (String, u32) {
         for section in sections.iter_mut() {
             if let Some(questions) = section.get_mut("questions").and_then(|q| q.as_array_mut()) {
                 for question in questions.iter_mut() {
-                    let answer_choice_empty = question.get("answer_choice").is_none_or(|v| v.is_null());
-                    let answer_text_empty = question.get("answer_text").is_none_or(|v| {
-                        v.is_null() || v.as_str().is_some_and(|s| s.is_empty())
-                    });
+                    let answer_choice_empty =
+                        question.get("answer_choice").is_none_or(|v| v.is_null());
+                    let answer_text_empty = question
+                        .get("answer_text")
+                        .is_none_or(|v| v.is_null() || v.as_str().is_some_and(|s| s.is_empty()));
 
                     if answer_choice_empty && answer_text_empty {
                         if let Some(choices) = question.get("choices").and_then(|c| c.as_array()) {
-                            if let Some(first_non_other) = choices.iter().find(|c| {
-                                c.get("is_other").and_then(|v| v.as_bool()) != Some(true)
-                            }) {
+                            if let Some(first_non_other) = choices
+                                .iter()
+                                .find(|c| c.get("is_other").and_then(|v| v.as_bool()) != Some(true))
+                            {
                                 if let (Some(id), Some(text)) = (
                                     first_non_other.get("id").cloned(),
                                     first_non_other.get("text").cloned(),
@@ -1695,19 +2653,29 @@ pub fn reset_workflow_step(
 ) -> Result<(), String> {
     log::info!(
         "[reset_workflow_step] CALLED skill={} from_step={} workspace={}",
-        skill_name, from_step_id, workspace_path
+        skill_name,
+        from_step_id,
+        workspace_path
     );
     let skills_path = read_skills_path(&db)
         .ok_or_else(|| "Skills path not configured. Please set it in Settings.".to_string())?;
     log::debug!("[reset_workflow_step] skills_path={}", skills_path);
 
     // Auto-commit: checkpoint before artifacts are deleted
-    let msg = format!("{}: checkpoint before reset to step {}", skill_name, from_step_id);
+    let msg = format!(
+        "{}: checkpoint before reset to step {}",
+        skill_name, from_step_id
+    );
     if let Err(e) = crate::git::commit_all(std::path::Path::new(&skills_path), &msg) {
         log::warn!("Git auto-commit failed ({}): {}", msg, e);
     }
 
-    crate::cleanup::delete_step_output_files(&workspace_path, &skill_name, from_step_id, &skills_path);
+    crate::cleanup::delete_step_output_files(
+        &workspace_path,
+        &skill_name,
+        from_step_id,
+        &skills_path,
+    );
 
     // Reset steps in SQLite
     let conn = db.0.lock().map_err(|e| e.to_string())?;
@@ -1715,7 +2683,10 @@ pub fn reset_workflow_step(
 
     // Update the workflow run's current step
     if let Some(run) = crate::db::get_workflow_run(&conn, &skill_name)? {
-        crate::db::save_workflow_run(&conn, &skill_name, from_step_id as i32,
+        crate::db::save_workflow_run(
+            &conn,
+            &skill_name,
+            from_step_id as i32,
             "pending",
             &run.purpose,
         )?;
@@ -1724,13 +2695,75 @@ pub fn reset_workflow_step(
     Ok(())
 }
 
+/// Navigate back to a completed step: preserves the target step's output files and DB status,
+/// deletes only the files of subsequent steps, and sets current_step to target_step_id.
+/// This makes the DB the canonical source of truth for navigate-back transitions.
 #[tauri::command]
-pub fn scan_legacy_clarifications(
+pub fn navigate_back_to_step(
+    workspace_path: String,
+    skill_name: String,
+    target_step_id: u32,
     db: tauri::State<'_, Db>,
-) -> Result<Vec<String>, String> {
+) -> Result<(), String> {
+    log::info!(
+        "[navigate_back_to_step] CALLED skill={} target_step={} workspace={}",
+        skill_name,
+        target_step_id,
+        workspace_path
+    );
+    let skills_path = read_skills_path(&db)
+        .ok_or_else(|| "Skills path not configured. Please set it in Settings.".to_string())?;
+    log::debug!("[navigate_back_to_step] skills_path={}", skills_path);
+
+    // Auto-commit: checkpoint before artifacts are deleted
+    let msg = format!(
+        "{}: checkpoint before navigate back to step {}",
+        skill_name, target_step_id
+    );
+    if let Err(e) = crate::git::commit_all(std::path::Path::new(&skills_path), &msg) {
+        log::warn!("Git auto-commit failed ({}): {}", msg, e);
+    }
+
+    // Delete output files only for steps AFTER the target; target step keeps its files.
+    let delete_from = target_step_id + 1;
+    crate::cleanup::delete_step_output_files(
+        &workspace_path,
+        &skill_name,
+        delete_from,
+        &skills_path,
+    );
+
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+
+    // Reset only steps after the target; target step status is preserved as "completed".
+    crate::db::reset_workflow_steps_from(&conn, &skill_name, delete_from as i32)?;
+
+    // Set current_step to the target (not delete_from) so DB reflects the correct landing step.
+    // Use "pending" for the run status because subsequent steps are now reset; the next
+    // saveWorkflowState sync will recompute and update as needed.
+    if let Some(run) = crate::db::get_workflow_run(&conn, &skill_name)? {
+        crate::db::save_workflow_run(
+            &conn,
+            &skill_name,
+            target_step_id as i32,
+            "pending",
+            &run.purpose,
+        )?;
+    }
+
+    log::info!(
+        "[navigate_back_to_step] done skill={} current_step={}",
+        skill_name,
+        target_step_id
+    );
+    Ok(())
+}
+
+#[tauri::command]
+pub fn scan_legacy_clarifications(db: tauri::State<'_, Db>) -> Result<Vec<String>, String> {
     log::info!("scan_legacy_clarifications: checking for legacy clarifications.md files");
 
-    let skills_path = match read_skills_path(&db) {
+    let workspace_path = match read_workspace_path(&db) {
         Some(p) => p,
         None => return Ok(vec![]),
     };
@@ -1747,7 +2780,7 @@ pub fn scan_legacy_clarifications(
 
     let mut legacy_skills = Vec::new();
     for name in &skill_names {
-        let md_path = Path::new(&skills_path)
+        let md_path = Path::new(&workspace_path)
             .join(name)
             .join("context")
             .join("clarifications.md");
@@ -1768,21 +2801,31 @@ pub fn reset_legacy_skills(
     skill_names: Vec<String>,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
-    log::info!("reset_legacy_skills: resetting {} skills", skill_names.len());
+    log::info!(
+        "reset_legacy_skills: resetting {} skills",
+        skill_names.len()
+    );
 
-    let skills_path = read_skills_path(&db)
-        .ok_or_else(|| "Skills path not configured".to_string())?;
+    let skills_path =
+        read_skills_path(&db).ok_or_else(|| "Skills path not configured".to_string())?;
+    let workspace_path =
+        read_workspace_path(&db).ok_or_else(|| "Workspace path not configured".to_string())?;
 
     let conn = db.0.lock().map_err(|e| e.to_string())?;
 
     for name in &skill_names {
         let skill_root = Path::new(&skills_path).join(name);
+        let workspace_skill_root = Path::new(&workspace_path).join(name);
 
         // Delete context/ contents
-        let context_dir = skill_root.join("context");
+        let context_dir = workspace_skill_root.join("context");
         if context_dir.is_dir() {
             if let Err(e) = std::fs::remove_dir_all(&context_dir) {
-                log::warn!("reset_legacy_skills: failed to remove context/ for {}: {}", name, e);
+                log::warn!(
+                    "reset_legacy_skills: failed to remove context/ for {}: {}",
+                    name,
+                    e
+                );
             }
             let _ = std::fs::create_dir_all(&context_dir);
         }
@@ -1797,7 +2840,11 @@ pub fn reset_legacy_skills(
         let refs_dir = skill_root.join("references");
         if refs_dir.is_dir() {
             if let Err(e) = std::fs::remove_dir_all(&refs_dir) {
-                log::warn!("reset_legacy_skills: failed to remove references/ for {}: {}", name, e);
+                log::warn!(
+                    "reset_legacy_skills: failed to remove references/ for {}: {}",
+                    name,
+                    e
+                );
             }
             let _ = std::fs::create_dir_all(&refs_dir);
         }
@@ -1806,7 +2853,8 @@ pub fn reset_legacy_skills(
         conn.execute(
             "UPDATE workflow_steps SET status = 'pending' WHERE skill_name = ?1",
             rusqlite::params![name],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
 
         log::info!("reset_legacy_skills: reset {}", name);
     }
@@ -1816,12 +2864,16 @@ pub fn reset_legacy_skills(
 
 #[tauri::command]
 pub fn preview_step_reset(
-    _workspace_path: String,
+    workspace_path: String,
     skill_name: String,
     from_step_id: u32,
     db: tauri::State<'_, Db>,
 ) -> Result<Vec<crate::types::StepResetPreview>, String> {
-    log::info!("[preview_step_reset] skill={} from_step={}", skill_name, from_step_id);
+    log::info!(
+        "[preview_step_reset] skill={} from_step={}",
+        skill_name,
+        from_step_id
+    );
     let skills_path = read_skills_path(&db)
         .ok_or_else(|| "Skills path not configured. Please set it in Settings.".to_string())?;
     let skill_output_dir = Path::new(&skills_path).join(&skill_name);
@@ -1839,7 +2891,12 @@ pub fn preview_step_reset(
         let mut existing_files: Vec<String> = Vec::new();
 
         for file in get_step_output_files(step_id) {
-            if skill_output_dir.join(file).exists() {
+            let exists = if step_id == 3 {
+                skill_output_dir.join(file).exists()
+            } else {
+                Path::new(&workspace_path).join(&skill_name).join(file).exists()
+            };
+            if exists {
                 existing_files.push(file.to_string());
             }
         }
@@ -1853,7 +2910,8 @@ pub fn preview_step_reset(
                         let path = entry.path();
                         if path.is_file() {
                             if let Some(name) = path.file_name() {
-                                existing_files.push(format!("references/{}", name.to_string_lossy()));
+                                existing_files
+                                    .push(format!("references/{}", name.to_string_lossy()));
                             }
                         }
                     }
@@ -1862,7 +2920,10 @@ pub fn preview_step_reset(
         }
 
         if !existing_files.is_empty() {
-            let name = step_names.get(step_id as usize).unwrap_or(&"Unknown").to_string();
+            let name = step_names
+                .get(step_id as usize)
+                .unwrap_or(&"Unknown")
+                .to_string();
             result.push(crate::types::StepResetPreview {
                 step_id,
                 step_name: name,
@@ -1874,11 +2935,41 @@ pub fn preview_step_reset(
     Ok(result)
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn valid_clarifications_value() -> serde_json::Value {
+        serde_json::json!({
+            "version": "1",
+            "metadata": {
+                "question_count": 1,
+                "section_count": 1,
+                "refinement_count": 0,
+                "must_answer_count": 0,
+                "priority_questions": []
+            },
+            "sections": [
+                {
+                    "id": "S1",
+                    "title": "Section",
+                    "questions": [
+                        {
+                            "id": "Q1",
+                            "title": "Question",
+                            "must_answer": false,
+                            "text": "Question text",
+                            "choices": [
+                                {"id":"A","text":"Choice","is_other":false}
+                            ],
+                            "refinements": []
+                        }
+                    ]
+                }
+            ],
+            "notes": []
+        })
+    }
 
     #[test]
     fn test_get_step_config_valid_steps() {
@@ -1894,17 +2985,21 @@ mod tests {
 
     #[test]
     fn test_get_step_config_invalid_step() {
-        assert!(get_step_config(4).is_err());  // Beyond last step
-        assert!(get_step_config(5).is_err());  // Beyond last step
-        assert!(get_step_config(6).is_err());  // Beyond last step
-        assert!(get_step_config(7).is_err());  // Beyond last step
+        assert!(get_step_config(4).is_err()); // Beyond last step
+        assert!(get_step_config(5).is_err()); // Beyond last step
+        assert!(get_step_config(6).is_err()); // Beyond last step
+        assert!(get_step_config(7).is_err()); // Beyond last step
         assert!(get_step_config(99).is_err());
     }
 
     #[test]
     fn test_get_step_config_step7_error_message() {
         let err = get_step_config(7).unwrap_err();
-        assert!(err.contains("Unknown step_id 7"), "Error should mention unknown step: {}", err);
+        assert!(
+            err.contains("Unknown step_id 7"),
+            "Error should mention unknown step: {}",
+            err
+        );
     }
 
     #[test]
@@ -1919,6 +3014,605 @@ mod tests {
     }
 
     #[test]
+    fn test_workflow_output_format_is_set_for_json_contract_workflow_agents() {
+        assert!(workflow_output_format_for_agent("research-orchestrator").is_some());
+        assert!(workflow_output_format_for_agent("detailed-research").is_some());
+        assert!(workflow_output_format_for_agent("confirm-decisions").is_some());
+        assert!(workflow_output_format_for_agent("generate-skill").is_some());
+    }
+
+    #[test]
+    fn test_research_output_format_requires_artifact_fields() {
+        let format = workflow_output_format_for_agent("research-orchestrator").unwrap();
+        let required = format["schema"]["required"]
+            .as_array()
+            .expect("required array");
+        assert!(required.iter().any(|v| v == "research_output"));
+        assert!(!required.iter().any(|v| v == "research_plan_markdown"));
+        assert!(!required.iter().any(|v| v == "clarifications_json"));
+    }
+
+    #[test]
+    fn test_detailed_research_output_format_requires_clarifications_payload() {
+        let format = workflow_output_format_for_agent("detailed-research").unwrap();
+        let required = format["schema"]["required"]
+            .as_array()
+            .expect("required array");
+        assert!(required.iter().any(|v| v == "clarifications_json"));
+    }
+
+    #[test]
+    fn test_workflow_output_format_is_unset_for_unknown_agents() {
+        assert!(workflow_output_format_for_agent("unknown-agent").is_none());
+    }
+
+    #[test]
+    fn test_answer_evaluator_output_format_has_required_contract_keys() {
+        let format = answer_evaluator_output_format();
+        let schema = &format["schema"];
+        let required = schema["required"].as_array().expect("required array");
+        assert!(required.iter().any(|v| v == "per_question"));
+        assert!(required.iter().any(|v| v == "verdict"));
+        assert_eq!(
+            schema["properties"]["verdict"]["enum"],
+            serde_json::json!(["sufficient", "mixed", "insufficient"])
+        );
+    }
+
+    #[test]
+    fn test_materialize_answer_evaluation_writes_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace_dir = tmp.path().join("workspace").join("my-skill");
+        let payload = serde_json::json!({
+            "verdict": "mixed",
+            "answered_count": 3,
+            "empty_count": 1,
+            "vague_count": 1,
+            "contradictory_count": 0,
+            "total_count": 5,
+            "reasoning": "Most answers are good, with a few gaps.",
+            "per_question": [
+                {"question_id": "Q1", "verdict": "clear"},
+                {"question_id": "Q2", "verdict": "vague", "reason": "Too generic."}
+            ]
+        });
+
+        super::materialize_answer_evaluation_output_value(&workspace_dir, &payload).unwrap();
+        assert!(workspace_dir.join("answer-evaluation.json").exists());
+    }
+
+    #[test]
+    fn test_materialize_answer_evaluation_rejects_invalid_payload() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace_dir = tmp.path().join("workspace").join("my-skill");
+        let invalid_payload = serde_json::json!({
+            "verdict": "mixed",
+            "answered_count": 1,
+            "empty_count": 0,
+            "vague_count": 0,
+            "contradictory_count": 1,
+            "total_count": 1,
+            "reasoning": "Contradiction found.",
+            "per_question": [
+                {"question_id": "Q1", "verdict": "contradictory"}
+            ]
+        });
+
+        let err =
+            super::materialize_answer_evaluation_output_value(&workspace_dir, &invalid_payload)
+                .unwrap_err();
+        assert!(err.contains("Invalid answer evaluation output"));
+        assert!(!workspace_dir.join("answer-evaluation.json").exists());
+    }
+
+    #[test]
+    fn test_materialize_answer_evaluation_rejects_missing_per_question_array() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace_dir = tmp.path().join("workspace").join("my-skill");
+        let payload = serde_json::json!({
+            "verdict": "mixed",
+            "answered_count": 1,
+            "empty_count": 0,
+            "vague_count": 0,
+            "contradictory_count": 0,
+            "total_count": 1,
+            "reasoning": "One answer provided."
+        });
+        let err = super::materialize_answer_evaluation_output_value(&workspace_dir, &payload)
+            .unwrap_err();
+        assert!(err.contains("answer_evaluation.per_question must be an array"));
+    }
+
+    #[test]
+    fn test_materialize_answer_evaluation_rejects_vague_without_reason() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace_dir = tmp.path().join("workspace").join("my-skill");
+        let payload = serde_json::json!({
+            "verdict": "mixed",
+            "answered_count": 0,
+            "empty_count": 0,
+            "vague_count": 1,
+            "contradictory_count": 0,
+            "total_count": 1,
+            "reasoning": "Answer was vague.",
+            "per_question": [
+                {"question_id": "Q1", "verdict": "vague"}
+            ]
+        });
+        let err = super::materialize_answer_evaluation_output_value(&workspace_dir, &payload)
+            .unwrap_err();
+        assert!(err.contains("reason is required for vague verdict"));
+    }
+
+    #[test]
+    fn test_materialize_step0_writes_research_and_clarifications() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "research_complete",
+            "dimensions_selected": 2,
+            "question_count": 5,
+            "research_output": {
+                "version": "1",
+                "metadata": {
+                    "question_count": 0,
+                    "section_count": 0,
+                    "refinement_count": 0,
+                    "must_answer_count": 0,
+                    "priority_questions": []
+                },
+                "sections": [],
+                "notes": []
+            }
+        });
+
+        super::materialize_workflow_step_output_value(&skill_root, 0, &payload).unwrap();
+        assert!(skill_root.join("context/clarifications.json").exists());
+        assert!(!skill_root.join("context/research-plan.md").exists());
+    }
+
+    #[test]
+    fn test_materialize_step0_validation_failure_keeps_existing_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let context_dir = skill_root.join("context");
+        std::fs::create_dir_all(&context_dir).unwrap();
+        std::fs::write(context_dir.join("clarifications.json"), "{\"old\":true}").unwrap();
+
+        let invalid_payload = serde_json::json!({
+            "status": "research_complete",
+            "dimensions_selected": 2,
+            "question_count": 5,
+            "research_output": {
+                "version": "1",
+                "metadata": {},
+                "sections": [],
+                "notes": []
+            }
+        });
+
+        let err = super::materialize_workflow_step_output_value(&skill_root, 0, &invalid_payload)
+            .unwrap_err();
+        assert!(err.contains("Invalid research_output"));
+        assert_eq!(
+            std::fs::read_to_string(context_dir.join("clarifications.json")).unwrap(),
+            "{\"old\":true}"
+        );
+    }
+
+    #[test]
+    fn test_materialize_step1_writes_clarifications_only() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "detailed_research_complete",
+            "refinement_count": 1,
+            "section_count": 1,
+            "clarifications_json": {
+                "version": "1",
+                "metadata": {
+                    "question_count": 1,
+                    "section_count": 1,
+                    "refinement_count": 1,
+                    "must_answer_count": 0,
+                    "priority_questions": []
+                },
+                "sections": [
+                    {
+                        "id": "S1",
+                        "title": "Section",
+                        "questions": [
+                            {
+                                "id": "Q1",
+                                "title": "Question",
+                                "must_answer": false,
+                                "text": "Question text",
+                                "choices": [
+                                    {"id":"A","text":"Choice","is_other":false}
+                                ],
+                                "refinements": []
+                            }
+                        ]
+                    }
+                ],
+                "notes": []
+            }
+        });
+
+        super::materialize_workflow_step_output_value(&skill_root, 1, &payload).unwrap();
+        assert!(skill_root.join("context/clarifications.json").exists());
+    }
+
+    #[test]
+    fn test_materialize_step0_rejects_non_object_payload() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let err = super::materialize_workflow_step_output_value(&skill_root, 0, &serde_json::json!(null))
+            .unwrap_err();
+        assert!(err.contains("structured_output must be a JSON object"));
+    }
+
+    #[test]
+    fn test_materialize_step0_rejects_wrong_status() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "detailed_research_complete",
+            "dimensions_selected": 1,
+            "question_count": 1,
+            "research_output": valid_clarifications_value()
+        });
+        let err =
+            super::materialize_workflow_step_output_value(&skill_root, 0, &payload).unwrap_err();
+        assert!(err.contains("structured_output.status must be 'research_complete'"));
+    }
+
+    #[test]
+    fn test_materialize_step0_rejects_missing_or_invalid_numeric_fields() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+
+        let missing_dimensions = serde_json::json!({
+            "status": "research_complete",
+            "question_count": 1,
+            "research_output": valid_clarifications_value()
+        });
+        let err_missing_dimensions =
+            super::materialize_workflow_step_output_value(&skill_root, 0, &missing_dimensions)
+                .unwrap_err();
+        assert!(err_missing_dimensions.contains("structured_output.dimensions_selected must be an integer"));
+
+        let non_integer_question_count = serde_json::json!({
+            "status": "research_complete",
+            "dimensions_selected": 1,
+            "question_count": "one",
+            "research_output": valid_clarifications_value()
+        });
+        let err_non_integer_question_count =
+            super::materialize_workflow_step_output_value(&skill_root, 0, &non_integer_question_count)
+                .unwrap_err();
+        assert!(err_non_integer_question_count.contains("structured_output.question_count must be an integer"));
+    }
+
+    #[test]
+    fn test_materialize_step0_rejects_missing_or_invalid_research_output() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+
+        let missing = serde_json::json!({
+            "status": "research_complete",
+            "dimensions_selected": 1,
+            "question_count": 1
+        });
+        let err_missing =
+            super::materialize_workflow_step_output_value(&skill_root, 0, &missing).unwrap_err();
+        assert!(err_missing.contains("structured_output.research_output is required"));
+
+        let invalid_nested = serde_json::json!({
+            "status": "research_complete",
+            "dimensions_selected": 1,
+            "question_count": 1,
+            "research_output": {
+                "version": "1",
+                "metadata": {
+                    "question_count": 1,
+                    "section_count": 1,
+                    "refinement_count": 0,
+                    "must_answer_count": 0,
+                    "priority_questions": []
+                },
+                "sections": [
+                    {
+                        "id": "S1",
+                        "title": "Section",
+                        "questions": [
+                            {
+                                "id": "Q1",
+                                "title": "Question",
+                                "must_answer": false,
+                                "text": "Question text",
+                                "choices": [{"id":"A","text":"Choice"}],
+                                "refinements": []
+                            }
+                        ]
+                    }
+                ],
+                "notes": []
+            }
+        });
+        let err_invalid_nested =
+            super::materialize_workflow_step_output_value(&skill_root, 0, &invalid_nested)
+                .unwrap_err();
+        assert!(err_invalid_nested.contains("Invalid research_output"));
+        assert!(err_invalid_nested.contains("is_other must be a boolean"));
+    }
+
+    #[test]
+    fn test_materialize_step1_rejects_wrong_status() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "research_complete",
+            "refinement_count": 1,
+            "section_count": 1,
+            "clarifications_json": valid_clarifications_value()
+        });
+        let err =
+            super::materialize_workflow_step_output_value(&skill_root, 1, &payload).unwrap_err();
+        assert!(err.contains("structured_output.status must be 'detailed_research_complete'"));
+    }
+
+    #[test]
+    fn test_materialize_step1_rejects_missing_or_invalid_numeric_fields() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+
+        let missing_refinement_count = serde_json::json!({
+            "status": "detailed_research_complete",
+            "section_count": 1,
+            "clarifications_json": valid_clarifications_value()
+        });
+        let err_missing_refinement_count =
+            super::materialize_workflow_step_output_value(&skill_root, 1, &missing_refinement_count)
+                .unwrap_err();
+        assert!(err_missing_refinement_count.contains("structured_output.refinement_count must be an integer"));
+
+        let non_integer_section_count = serde_json::json!({
+            "status": "detailed_research_complete",
+            "refinement_count": 1,
+            "section_count": "one",
+            "clarifications_json": valid_clarifications_value()
+        });
+        let err_non_integer_section_count =
+            super::materialize_workflow_step_output_value(&skill_root, 1, &non_integer_section_count)
+                .unwrap_err();
+        assert!(err_non_integer_section_count.contains("structured_output.section_count must be an integer"));
+    }
+
+    #[test]
+    fn test_materialize_step1_rejects_missing_clarifications_json() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "detailed_research_complete",
+            "refinement_count": 1,
+            "section_count": 1
+        });
+        let err =
+            super::materialize_workflow_step_output_value(&skill_root, 1, &payload).unwrap_err();
+        assert!(err.contains("structured_output.clarifications_json is required"));
+    }
+
+    #[test]
+    fn test_materialize_step1_validation_failure_keeps_existing_clarifications() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let context_dir = skill_root.join("context");
+        std::fs::create_dir_all(&context_dir).unwrap();
+        std::fs::write(context_dir.join("clarifications.json"), "{\"old\":true}").unwrap();
+
+        let invalid_payload = serde_json::json!({
+            "status": "detailed_research_complete",
+            "refinement_count": 1,
+            "section_count": 1,
+            "clarifications_json": {
+                "version": "1",
+                "metadata": {
+                    "question_count": 1,
+                    "section_count": 1,
+                    "refinement_count": 0,
+                    "must_answer_count": 0,
+                    "priority_questions": []
+                },
+                "sections": [],
+                "notes": "not-an-array"
+            }
+        });
+        let err = super::materialize_workflow_step_output_value(&skill_root, 1, &invalid_payload)
+            .unwrap_err();
+        assert!(err.contains("Invalid clarifications_json"));
+        assert_eq!(
+            std::fs::read_to_string(context_dir.join("clarifications.json")).unwrap(),
+            "{\"old\":true}"
+        );
+    }
+
+    #[test]
+    fn test_materialize_step1_rejects_invalid_answer_evaluator_notes_shape() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "detailed_research_complete",
+            "refinement_count": 1,
+            "section_count": 1,
+            "clarifications_json": {
+                "version": "1",
+                "metadata": {
+                    "question_count": 1,
+                    "section_count": 1,
+                    "refinement_count": 0,
+                    "must_answer_count": 0,
+                    "priority_questions": []
+                },
+                "sections": [],
+                "notes": [],
+                "answer_evaluator_notes": "invalid"
+            }
+        });
+
+        let err = super::materialize_workflow_step_output_value(&skill_root, 1, &payload)
+            .unwrap_err();
+        assert!(err.contains("answer_evaluator_notes must be an array when present"));
+    }
+
+    #[test]
+    fn test_materialize_step0_scope_recommendation_triggers_scope_guard_parser() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "research_complete",
+            "dimensions_selected": 0,
+            "question_count": 0,
+            "research_output": {
+                "version": "1",
+                "metadata": {
+                    "question_count": 0,
+                    "section_count": 0,
+                    "refinement_count": 0,
+                    "must_answer_count": 0,
+                    "priority_questions": [],
+                    "scope_recommendation": true
+                },
+                "sections": [],
+                "notes": []
+            }
+        });
+
+        super::materialize_workflow_step_output_value(&skill_root, 0, &payload).unwrap();
+        assert!(parse_scope_recommendation(
+            &skill_root.join("context/clarifications.json")
+        ));
+    }
+
+    #[test]
+    fn test_materialize_step2_writes_decisions() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "version": "1",
+            "metadata": { "decision_count": 1, "conflicts_resolved": 0, "round": 1 },
+            "decisions": [{ "id": "D1", "title": "Capability", "decision": "A" }]
+        });
+        super::materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap();
+        assert!(skill_root.join("context/decisions.json").exists());
+    }
+
+    #[test]
+    fn test_materialize_step2_writes_scope_guard_stub_decisions() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "version": "1",
+            "metadata": { "scope_recommendation": true, "decision_count": 0 },
+            "decisions": []
+        });
+        super::materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap();
+        let content = std::fs::read_to_string(skill_root.join("context/decisions.json")).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&content).unwrap();
+        assert_eq!(parsed["metadata"]["scope_recommendation"], true);
+        assert_eq!(parsed["metadata"]["decision_count"], 0);
+    }
+
+    #[test]
+    fn test_materialize_step2_conflict_decisions_trigger_conflict_guard() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "version": "1",
+            "metadata": { "decision_count": 2, "contradictory_inputs": true },
+            "decisions": []
+        });
+        super::materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap();
+        assert!(parse_decisions_guard(&skill_root.join("context/decisions.json")));
+    }
+
+    #[test]
+    fn test_materialize_step2_revised_conflict_decisions_do_not_trigger_guard() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "version": "1",
+            "metadata": { "decision_count": 2, "contradictory_inputs": false },
+            "decisions": []
+        });
+        super::materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap();
+        assert!(!parse_decisions_guard(&skill_root.join("context/decisions.json")));
+    }
+
+    #[test]
+    fn test_materialize_step2_rejects_null_payload() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let err = super::materialize_workflow_step_output_value(&skill_root, 2, &serde_json::json!(null))
+            .unwrap_err();
+        assert!(err.contains("structured_output must be a JSON object"));
+    }
+
+    #[test]
+    fn test_materialize_step3_writes_evaluations() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "generated",
+            "evaluations_markdown": "## Scenario 1\n- input\n- expected output\n"
+        });
+        super::materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap();
+        assert!(skill_root.join("context/evaluations.md").exists());
+    }
+
+    #[test]
+    fn test_materialize_step3_rejects_wrong_status() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "decisions_complete",
+            "evaluations_markdown": "## Scenario 1\n- input\n- expected output\n"
+        });
+        let err =
+            super::materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap_err();
+        assert!(err.contains("structured_output.status must be 'generated'"));
+    }
+
+    #[test]
+    fn test_materialize_step3_rejects_missing_or_invalid_evaluations_markdown() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+
+        let missing = serde_json::json!({
+            "status": "generated"
+        });
+        let err_missing =
+            super::materialize_workflow_step_output_value(&skill_root, 3, &missing).unwrap_err();
+        assert!(err_missing.contains("structured_output.evaluations_markdown must be a string"));
+
+        let non_string = serde_json::json!({
+            "status": "generated",
+            "evaluations_markdown": ["not", "markdown"]
+        });
+        let err_non_string =
+            super::materialize_workflow_step_output_value(&skill_root, 3, &non_string).unwrap_err();
+        assert!(err_non_string.contains("structured_output.evaluations_markdown must be a string"));
+
+        let empty = serde_json::json!({
+            "status": "generated",
+            "evaluations_markdown": ""
+        });
+        let err_empty =
+            super::materialize_workflow_step_output_value(&skill_root, 3, &empty).unwrap_err();
+        assert!(err_empty.contains("structured_output.evaluations_markdown must not be empty"));
+    }
+
+    #[test]
     fn test_build_prompt_all_three_paths() {
         let prompt = build_prompt(
             "my-skill",
@@ -1929,10 +3623,12 @@ mod tests {
             5,
         );
         assert!(prompt.contains("my-skill"));
-        // 3 distinct paths in prompt
-        assert!(prompt.contains("The workspace directory is: /home/user/.vibedata/skill-builder/my-skill"));
-        assert!(prompt.contains("The context directory is: /home/user/my-skills/my-skill/context"));
-        assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"));
+        // SDK protocol: only skill name and workspace_dir; agent derives context and reads .skill_output_dir
+        assert!(prompt
+            .contains("The workspace directory is: /home/user/.vibedata/skill-builder/my-skill"));
+        assert!(prompt.contains("Read user-context.md and .skill_output_dir"));
+        assert!(prompt.contains("Derive context_dir as workspace_dir/context"));
+        assert!(prompt.contains("path in .skill_output_dir"));
     }
 
     #[test]
@@ -1980,35 +3676,27 @@ mod tests {
 
     #[test]
     fn test_answer_evaluator_prompt_uses_standard_paths() {
-        // The answer-evaluator prompt must follow the same "workspace directory" /
-        // "context directory" pattern as build_prompt so the mock agent and real
-        // agent can parse paths consistently.
+        // The answer-evaluator prompt follows the SDK protocol: only skill name and workspace_dir.
         let workspace_path = "/home/user/.vibedata/skill-builder";
-        let skills_path = "/home/user/my-skills";
         let skill_name = "my-skill";
-
-        let context_dir = std::path::Path::new(skills_path)
-            .join(skill_name)
-            .join("context");
         let workspace_dir = std::path::Path::new(workspace_path).join(skill_name);
+        let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
 
         let prompt = format!(
-            "The workspace directory is: {workspace}. \
-             The context directory is: {context}. \
+            "The skill name is: {}. The workspace directory is: {}. \
+             Read user-context.md and .skill_output_dir from the workspace directory first. \
+             Derive context_dir as workspace_dir/context. \
              All directories already exist — do not create any directories.",
-            workspace = workspace_dir.to_string_lossy().replace('\\', "/"),
-            context = context_dir.to_string_lossy().replace('\\', "/"),
+            skill_name,
+            workspace_str,
         );
 
-        // Verify standard path markers that mock agent and agent prompts rely on
-        assert!(prompt.contains("The workspace directory is: /home/user/.vibedata/skill-builder/my-skill."));
-        assert!(prompt.contains("The context directory is: /home/user/my-skills/my-skill/context."));
+        assert!(prompt.contains("The skill name is: my-skill"));
+        assert!(prompt
+            .contains("The workspace directory is: /home/user/.vibedata/skill-builder/my-skill"));
+        assert!(prompt.contains("Read user-context.md and .skill_output_dir"));
+        assert!(prompt.contains("Derive context_dir as workspace_dir/context"));
         assert!(prompt.contains("do not create any directories"));
-        // Workspace dir is NOT context dir (answer-evaluation.json goes to workspace)
-        assert_ne!(
-            workspace_dir.to_str().unwrap(),
-            context_dir.to_str().unwrap(),
-        );
     }
 
     #[test]
@@ -2036,8 +3724,8 @@ mod tests {
         // Extra files that should NOT be included in the zip
         std::fs::create_dir_all(source_dir.join("context")).unwrap();
         std::fs::write(
-            source_dir.join("context").join("decisions.md"),
-            "# Decisions",
+            source_dir.join("context").join("decisions.json"),
+            "{}",
         )
         .unwrap();
         std::fs::write(source_dir.join("workflow.md"), "# Workflow").unwrap();
@@ -2069,11 +3757,7 @@ mod tests {
         std::fs::create_dir_all(source_dir.join("references").join("sub")).unwrap();
 
         std::fs::write(source_dir.join("SKILL.md"), "# Nested").unwrap();
-        std::fs::write(
-            source_dir.join("references").join("top.md"),
-            "top level",
-        )
-        .unwrap();
+        std::fs::write(source_dir.join("references").join("top.md"), "top level").unwrap();
         std::fs::write(
             source_dir.join("references").join("sub").join("nested.md"),
             "nested ref",
@@ -2109,17 +3793,23 @@ mod tests {
 
     #[test]
     fn test_resolve_prompts_dir_dev_mode() {
-        // In dev/test mode, CARGO_MANIFEST_DIR is set and the repo root has agents/
+        // In dev/test mode, CARGO_MANIFEST_DIR is set and the repo root has agent-sources/agents/
         let dev_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .and_then(|p| p.parent())
-            .map(|p| p.join("agents"));
+            .map(|p| p.join("agent-sources").join("agents"));
         assert!(dev_path.is_some());
         let agents_dir = dev_path.unwrap();
-        assert!(agents_dir.is_dir(), "Repo root agents/ should exist");
+        assert!(agents_dir.is_dir(), "Repo root agent-sources/agents/ should exist");
         // Verify flat agent files exist (no subdirectories)
-        assert!(agents_dir.join("research-orchestrator.md").exists(), "agents/research-orchestrator.md should exist");
-        assert!(agents_dir.join("validate-skill.md").exists(), "agents/validate-skill.md should exist");
+        assert!(
+            agents_dir.join("research-orchestrator.md").exists(),
+            "agent-sources/agents/research-orchestrator.md should exist"
+        );
+        assert!(
+            agents_dir.join("validate-skill.md").exists(),
+            "agent-sources/agents/validate-skill.md should exist"
+        );
     }
 
     #[test]
@@ -2128,19 +3818,16 @@ mod tests {
         let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = workspace_tmp.path().to_str().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
-        // Context files live in skills_path/skill_name/
+        // Context files live in workspace_path/skill_name/context/
         let skill_dir = skills_tmp.path().join("my-skill");
-        std::fs::create_dir_all(skill_dir.join("context")).unwrap();
+        let workspace_skill_dir = workspace_tmp.path().join("my-skill");
+        std::fs::create_dir_all(workspace_skill_dir.join("context")).unwrap();
         std::fs::create_dir_all(skill_dir.join("references")).unwrap();
 
-        // Create output files for steps 0, 1, 2, 3 in skills_path/my-skill/
+        // Create output files for steps 0, 1, 2, 3
         // Steps 0 and 1 both use clarifications.json (unified artifact)
-        std::fs::write(
-            skill_dir.join("context/clarifications.json"),
-            "step0+step1",
-        )
-        .unwrap();
-        std::fs::write(skill_dir.join("context/decisions.md"), "step2").unwrap();
+        std::fs::write(workspace_skill_dir.join("context/clarifications.json"), "step0+step1").unwrap();
+        std::fs::write(workspace_skill_dir.join("context/decisions.json"), "{}").unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "step3").unwrap();
         std::fs::write(skill_dir.join("references/ref.md"), "ref").unwrap();
 
@@ -2148,10 +3835,10 @@ mod tests {
         crate::cleanup::delete_step_output_files(workspace, "my-skill", 2, skills_path);
 
         // Steps 0, 1 output (unified clarifications.json) should still exist
-        assert!(skill_dir.join("context/clarifications.json").exists());
+        assert!(workspace_skill_dir.join("context/clarifications.json").exists());
 
         // Steps 2+ outputs should be deleted
-        assert!(!skill_dir.join("context/decisions.md").exists());
+        assert!(!workspace_skill_dir.join("context/decisions.json").exists());
         assert!(!skill_dir.join("SKILL.md").exists());
         assert!(!skill_dir.join("references").exists());
     }
@@ -2168,13 +3855,13 @@ mod tests {
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
 
         std::fs::write(skill_dir.join("context/clarifications.json"), "refined").unwrap();
-        std::fs::write(skill_dir.join("context/decisions.md"), "step2").unwrap();
+        std::fs::write(skill_dir.join("context/decisions.json"), "{}").unwrap();
 
         // Clean only step 1 — both files should be untouched (step 1 has no unique output)
         crate::cleanup::clean_step_output_thorough(workspace, "my-skill", 1, skills_path);
 
         assert!(skill_dir.join("context/clarifications.json").exists());
-        assert!(skill_dir.join("context/decisions.md").exists());
+        assert!(skill_dir.join("context/decisions.json").exists());
     }
 
     #[test]
@@ -2191,17 +3878,18 @@ mod tests {
         let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = workspace_tmp.path().to_str().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
-        let skill_dir = skills_tmp.path().join("my-skill");
-        std::fs::create_dir_all(skill_dir.join("context")).unwrap();
+        let _skill_dir = skills_tmp.path().join("my-skill");
+        let workspace_skill_dir = workspace_tmp.path().join("my-skill");
+        std::fs::create_dir_all(workspace_skill_dir.join("context")).unwrap();
 
-        // Create files for step 2 (decisions) in skills_path
-        std::fs::write(skill_dir.join("context/decisions.md"), "step2").unwrap();
+        // Create files for step 2 (decisions) in workspace context
+        std::fs::write(workspace_skill_dir.join("context/decisions.json"), "{}").unwrap();
 
         // Reset from step 2 onwards should clean up step 2+3
         crate::cleanup::delete_step_output_files(workspace, "my-skill", 2, skills_path);
 
         // Step 2 outputs should be deleted
-        assert!(!skill_dir.join("context/decisions.md").exists());
+        assert!(!workspace_skill_dir.join("context/decisions.json").exists());
     }
 
     #[test]
@@ -2246,16 +3934,25 @@ mod tests {
         std::fs::create_dir_all(src.path().join("sub").join("deep")).unwrap();
         std::fs::write(src.path().join("top.md"), "top").unwrap();
         std::fs::write(src.path().join("sub").join("middle.txt"), "middle").unwrap();
-        std::fs::write(src.path().join("sub").join("deep").join("bottom.md"), "bottom").unwrap();
+        std::fs::write(
+            src.path().join("sub").join("deep").join("bottom.md"),
+            "bottom",
+        )
+        .unwrap();
 
         let dest_path = dest.path().join("copied");
         copy_directory_recursive(src.path(), &dest_path).unwrap();
 
         assert!(dest_path.join("top.md").exists());
         assert!(dest_path.join("sub").join("middle.txt").exists());
-        assert!(dest_path.join("sub").join("deep").join("bottom.md").exists());
+        assert!(dest_path
+            .join("sub")
+            .join("deep")
+            .join("bottom.md")
+            .exists());
 
-        let bottom = std::fs::read_to_string(dest_path.join("sub").join("deep").join("bottom.md")).unwrap();
+        let bottom =
+            std::fs::read_to_string(dest_path.join("sub").join("deep").join("bottom.md")).unwrap();
         assert_eq!(bottom, "bottom");
     }
 
@@ -2294,10 +3991,8 @@ mod tests {
     #[test]
     fn test_copy_directory_recursive_nonexistent_source_fails() {
         let dest = tempfile::tempdir().unwrap();
-        let result = copy_directory_recursive(
-            Path::new("/nonexistent/source"),
-            &dest.path().join("dest"),
-        );
+        let result =
+            copy_directory_recursive(Path::new("/nonexistent/source"), &dest.path().join("dest"));
         assert!(result.is_err());
     }
 
@@ -2326,7 +4021,8 @@ mod tests {
         std::fs::write(
             agents_dir.join("research-orchestrator.md"),
             "---\nname: research-orchestrator\nmodel: sonnet\n---\n# Agent\n",
-        ).unwrap();
+        )
+        .unwrap();
 
         assert_eq!(
             derive_agent_name(ws, "data-engineering", "research-orchestrator.md"),
@@ -2352,11 +4048,7 @@ mod tests {
         .unwrap();
 
         // Non-.md file should be ignored
-        std::fs::write(
-            src.path().join("README.txt"),
-            "ignore me",
-        )
-        .unwrap();
+        std::fs::write(src.path().join("README.txt"), "ignore me").unwrap();
 
         let workspace_path = workspace.path().to_str().unwrap();
         copy_agents_to_claude_dir(src.path(), workspace_path).unwrap();
@@ -2372,11 +4064,57 @@ mod tests {
         assert!(!claude_agents_dir.join("README.txt").exists());
 
         // Verify content
-        let content = std::fs::read_to_string(
-            claude_agents_dir.join("research-entities.md"),
+        let content =
+            std::fs::read_to_string(claude_agents_dir.join("research-entities.md")).unwrap();
+        assert_eq!(content, "# Research Entities");
+    }
+
+    #[test]
+    fn test_copy_managed_plugins_replaces_managed_and_preserves_unmanaged() {
+        let src = tempfile::tempdir().unwrap();
+        let workspace = tempfile::tempdir().unwrap();
+        let src_plugins = src.path().join("plugins");
+        std::fs::create_dir_all(&src_plugins).unwrap();
+
+        // Source plugin with current content
+        let source_plugin = src_plugins.join("skill-creator");
+        std::fs::create_dir_all(&source_plugin).unwrap();
+        std::fs::write(source_plugin.join("SKILL.md"), "new plugin content").unwrap();
+
+        let claude_plugins_dir = workspace.path().join(".claude").join("plugins");
+        std::fs::create_dir_all(&claude_plugins_dir).unwrap();
+
+        // Existing managed plugin should be replaced
+        let managed_existing = claude_plugins_dir.join("skill-creator");
+        std::fs::create_dir_all(&managed_existing).unwrap();
+        std::fs::write(managed_existing.join("SKILL.md"), "old plugin content").unwrap();
+        std::fs::write(
+            managed_existing.join(".skill-builder-managed"),
+            "managed by skill-builder startup\n",
         )
         .unwrap();
-        assert_eq!(content, "# Research Entities");
+
+        // Unmanaged plugin should be preserved
+        let unmanaged = claude_plugins_dir.join("user-plugin");
+        std::fs::create_dir_all(&unmanaged).unwrap();
+        std::fs::write(unmanaged.join("README.md"), "keep me").unwrap();
+
+        copy_managed_plugins_to_claude_dir(&src_plugins, workspace.path().to_str().unwrap())
+            .unwrap();
+
+        let replaced =
+            std::fs::read_to_string(claude_plugins_dir.join("skill-creator").join("SKILL.md"))
+                .unwrap();
+        assert_eq!(replaced, "new plugin content");
+        assert!(claude_plugins_dir
+            .join("skill-creator")
+            .join(".skill-builder-managed")
+            .exists());
+
+        let preserved =
+            std::fs::read_to_string(claude_plugins_dir.join("user-plugin").join("README.md"))
+                .unwrap();
+        assert_eq!(preserved, "keep me");
     }
 
     // --- Task 5: create_skill_zip excludes context/ ---
@@ -2389,19 +4127,14 @@ mod tests {
         std::fs::create_dir_all(source_dir.join("context")).unwrap();
 
         std::fs::write(source_dir.join("SKILL.md"), "# My Skill").unwrap();
-        std::fs::write(
-            source_dir.join("references").join("ref.md"),
-            "# Ref",
-        ).unwrap();
+        std::fs::write(source_dir.join("references").join("ref.md"), "# Ref").unwrap();
         // These context files should be EXCLUDED from the zip
+        std::fs::write(source_dir.join("context").join("clarifications.json"), "{}").unwrap();
         std::fs::write(
-            source_dir.join("context").join("clarifications.json"),
+            source_dir.join("context").join("decisions.json"),
             "{}",
-        ).unwrap();
-        std::fs::write(
-            source_dir.join("context").join("decisions.md"),
-            "# Decisions",
-        ).unwrap();
+        )
+        .unwrap();
 
         let output_path = source_dir.join("my-skill.skill");
         let result = create_skill_zip(&source_dir, &output_path).unwrap();
@@ -2427,54 +4160,47 @@ mod tests {
     #[test]
     fn test_validate_decisions_missing() {
         let tmp = tempfile::tempdir().unwrap();
-        let skills = tmp.path().join("skills");
-        std::fs::create_dir_all(skills.join("my-skill").join("context")).unwrap();
+        let workspace = tmp.path().join("workspace");
+        std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
 
-        let result = validate_decisions_exist_inner(
-            "my-skill",
-            "/unused",
-            skills.to_str().unwrap(),
-        );
+        let result =
+            validate_decisions_exist_inner("my-skill", workspace.to_str().unwrap(), "/unused");
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("decisions.md was not found"));
+        assert!(result.unwrap_err().contains("decisions.json was not found"));
     }
 
     #[test]
-    fn test_validate_decisions_found_in_skills_path() {
+    fn test_validate_decisions_found_in_workspace_context() {
         let tmp = tempfile::tempdir().unwrap();
-        let skills = tmp.path().join("skills");
-        std::fs::create_dir_all(skills.join("my-skill").join("context")).unwrap();
+        let workspace = tmp.path().join("workspace");
+        std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
         std::fs::write(
-            skills.join("my-skill").join("context").join("decisions.md"),
-            "# Decisions\n\nD1: Use periodic recognition",
-        ).unwrap();
+            workspace.join("my-skill").join("context").join("decisions.json"),
+            r#"{"metadata":{"decision_count":1}}"#,
+        )
+        .unwrap();
 
-        let result = validate_decisions_exist_inner(
-            "my-skill",
-            "/unused",
-            skills.to_str().unwrap(),
-        );
+        let result =
+            validate_decisions_exist_inner("my-skill", workspace.to_str().unwrap(), "/unused");
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_validate_decisions_rejects_empty_file() {
         let tmp = tempfile::tempdir().unwrap();
-        let skills = tmp.path().join("skills");
-        std::fs::create_dir_all(skills.join("my-skill").join("context")).unwrap();
+        let workspace = tmp.path().join("workspace");
+        std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
         // Write an empty decisions file
         std::fs::write(
-            skills.join("my-skill").join("context").join("decisions.md"),
+            workspace.join("my-skill").join("context").join("decisions.json"),
             "   \n\n  ",
-        ).unwrap();
+        )
+        .unwrap();
 
-        let result = validate_decisions_exist_inner(
-            "my-skill",
-            "/unused",
-            skills.to_str().unwrap(),
-        );
+        let result =
+            validate_decisions_exist_inner("my-skill", workspace.to_str().unwrap(), "/unused");
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("decisions.md was not found"));
+        assert!(result.unwrap_err().contains("decisions.json was not found"));
     }
 
     // --- debug mode: no reduced turns, sonnet model override ---
@@ -2485,10 +4211,10 @@ mod tests {
         // that get_step_config returns the *normal* turn limits for every step,
         // which is what run_workflow_step now uses unconditionally.
         let expected: Vec<(u32, u32)> = vec![
-            (0, 50),   // research
-            (1, 50),   // detailed research
-            (2, 100),  // confirm decisions
-            (3, 120),  // generate skill
+            (0, 50),  // research
+            (1, 50),  // detailed research
+            (2, 100), // confirm decisions
+            (3, 120), // generate skill
         ];
         for (step_id, expected_turns) in expected {
             let config = get_step_config(step_id).unwrap();
@@ -2502,12 +4228,7 @@ mod tests {
 
     #[test]
     fn test_step_max_turns() {
-        let steps_with_expected_turns = [
-            (0, 50),
-            (1, 50),
-            (2, 100),
-            (3, 120),
-        ];
+        let steps_with_expected_turns = [(0, 50), (1, 50), (2, 100), (3, 120)];
         for (step_id, normal_turns) in steps_with_expected_turns {
             let config = get_step_config(step_id).unwrap();
             assert_eq!(
@@ -2526,10 +4247,7 @@ mod tests {
         let skill_dir = tmp.path().join("my-skill");
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
 
-        std::fs::write(
-            skill_dir.join("context/clarifications.json"),
-            "{}",
-        ).unwrap();
+        std::fs::write(skill_dir.join("context/clarifications.json"), "{}").unwrap();
 
         let step_id: u32 = 0;
         if step_id == 0 {
@@ -2554,7 +4272,21 @@ mod tests {
         // Directory doesn't need to pre-exist — create_dir_all handles it
 
         let intake = r#"{"audience":"Data engineers","challenges":"Legacy systems","scope":"ETL pipelines"}"#;
-        write_user_context_file(workspace_path, "my-skill", &[], Some("Healthcare"), Some("Analytics Lead"), Some(intake), None, None, None, None, None, None, None);
+        write_user_context_file(
+            workspace_path,
+            "my-skill",
+            &[],
+            Some("Healthcare"),
+            Some("Analytics Lead"),
+            Some(intake),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
 
         let content = std::fs::read_to_string(workspace_dir.join("user-context.md")).unwrap();
         assert!(content.contains("# User Context"));
@@ -2575,7 +4307,21 @@ mod tests {
         let workspace_path = tmp.path().to_str().unwrap();
         let workspace_dir = tmp.path().join("my-skill");
 
-        write_user_context_file(workspace_path, "my-skill", &[], Some("Fintech"), None, None, None, None, None, None, None, None, None);
+        write_user_context_file(
+            workspace_path,
+            "my-skill",
+            &[],
+            Some("Fintech"),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
 
         let content = std::fs::read_to_string(workspace_dir.join("user-context.md")).unwrap();
         assert!(content.contains("**Industry**: Fintech"));
@@ -2589,7 +4335,21 @@ mod tests {
         let workspace_path = tmp.path().to_str().unwrap();
         let workspace_dir = tmp.path().join("my-skill");
 
-        write_user_context_file(workspace_path, "my-skill", &[], Some(""), None, None, None, None, None, None, None, None, None);
+        write_user_context_file(
+            workspace_path,
+            "my-skill",
+            &[],
+            Some(""),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
 
         // Skill name is always written; empty optional fields are omitted
         let content = std::fs::read_to_string(workspace_dir.join("user-context.md")).unwrap();
@@ -2603,7 +4363,21 @@ mod tests {
         let workspace_path = tmp.path().to_str().unwrap();
         let workspace_dir = tmp.path().join("my-skill");
 
-        write_user_context_file(workspace_path, "my-skill", &[], None, None, None, None, None, None, None, None, None, None);
+        write_user_context_file(
+            workspace_path,
+            "my-skill",
+            &[],
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
 
         // Skill name alone is enough to produce a file
         let content = std::fs::read_to_string(workspace_dir.join("user-context.md")).unwrap();
@@ -2618,7 +4392,21 @@ mod tests {
         // Directory does NOT exist yet
         assert!(!workspace_dir.exists());
 
-        write_user_context_file(workspace_path, "new-skill", &[], Some("Retail"), None, None, None, None, None, None, None, None, None);
+        write_user_context_file(
+            workspace_path,
+            "new-skill",
+            &[],
+            Some("Retail"),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
 
         // Directory should have been created and file written
         assert!(workspace_dir.join("user-context.md").exists());
@@ -2638,23 +4426,25 @@ mod tests {
 
     #[test]
     fn test_build_betas_thinking_non_opus() {
-        let betas = build_betas(Some(32000), "claude-sonnet-4-5-20250929");
-        assert_eq!(betas, Some(vec!["interleaved-thinking-2025-05-14".to_string()]));
+        let betas = build_betas(Some(32000), "claude-sonnet-4-5-20250929", true);
+        assert_eq!(
+            betas,
+            Some(vec!["interleaved-thinking-2025-05-14".to_string()])
+        );
     }
 
     #[test]
     fn test_build_betas_thinking_opus() {
         // Opus natively supports thinking — no interleaved-thinking beta needed
-        let betas = build_betas(Some(32000), "claude-opus-4-6");
+        let betas = build_betas(Some(32000), "claude-opus-4-6", true);
         assert_eq!(betas, None);
     }
 
     #[test]
     fn test_build_betas_none() {
-        let betas = build_betas(None, "claude-sonnet-4-5-20250929");
+        let betas = build_betas(None, "claude-sonnet-4-5-20250929", true);
         assert_eq!(betas, None);
     }
-
 
     #[test]
     fn test_workspace_already_copied_returns_false_for_unknown() {
@@ -2690,21 +4480,18 @@ mod tests {
     }
 
     #[test]
-    fn test_reset_cleans_skills_path_context_files() {
+    fn test_reset_cleans_workspace_context_files() {
         // 1. Create a temp workspace dir and a separate temp skills_path dir
         let workspace_tmp = tempfile::tempdir().unwrap();
         let skills_path_tmp = tempfile::tempdir().unwrap();
         let workspace = workspace_tmp.path().to_str().unwrap();
         let skills_path = skills_path_tmp.path().to_str().unwrap();
 
-        // 2-3. Create skills_path/my-skill/context/ with all context files
-        let context_dir = skills_path_tmp.path().join("my-skill").join("context");
+        // 2-3. Create workspace/my-skill/context/ with all context files
+        let context_dir = workspace_tmp.path().join("my-skill").join("context");
         std::fs::create_dir_all(&context_dir).unwrap();
 
-        let context_files = [
-            "clarifications.json",
-            "decisions.md",
-        ];
+        let context_files = ["clarifications.json", "decisions.json"];
         for file in &context_files {
             std::fs::write(context_dir.join(file), "test content").unwrap();
         }
@@ -2712,10 +4499,10 @@ mod tests {
         // 4. Working dir must exist in workspace
         std::fs::create_dir_all(workspace_tmp.path().join("my-skill")).unwrap();
 
-        // 5. Call delete_step_output_files from step 0 with skills_path
+        // 5. Call delete_step_output_files from step 0
         crate::cleanup::delete_step_output_files(workspace, "my-skill", 0, skills_path);
 
-        // 6. Assert ALL files in skills_path/my-skill/context/ are gone
+        // 6. Assert ALL files in workspace/my-skill/context/ are gone
         let mut remaining: Vec<String> = Vec::new();
         for file in &context_files {
             if context_dir.join(file).exists() {
@@ -2724,7 +4511,7 @@ mod tests {
         }
         assert!(
             remaining.is_empty(),
-            "Expected all context files in skills_path to be deleted, but these remain: {:?}",
+            "Expected all workspace context files to be deleted, but these remain: {:?}",
             remaining
         );
     }
@@ -2740,10 +4527,26 @@ mod tests {
     }
 
     #[test]
+    fn test_scope_recommendation_true_with_reason_fields() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        use std::io::Write as _;
+        write!(
+            f,
+            r#"{{"metadata":{{"scope_recommendation":true,"scope_reason":"Throwaway intent detected","scope_next_action":"Provide concrete domain"}},"sections":[],"notes":[{{"type":"blocked","title":"Scope Recommendation","body":"Narrow the scope"}}]}}"#
+        )
+        .unwrap();
+        assert!(parse_scope_recommendation(f.path()));
+    }
+
+    #[test]
     fn test_scope_recommendation_false() {
         let mut f = tempfile::NamedTempFile::new().unwrap();
         use std::io::Write as _;
-        write!(f, r#"{{"metadata":{{"scope_recommendation":false}},"sections":[]}}"#).unwrap();
+        write!(
+            f,
+            r#"{{"metadata":{{"scope_recommendation":false}},"sections":[]}}"#
+        )
+        .unwrap();
         assert!(!parse_scope_recommendation(f.path()));
     }
 
@@ -2757,7 +4560,9 @@ mod tests {
 
     #[test]
     fn test_scope_recommendation_missing_file() {
-        assert!(!parse_scope_recommendation(Path::new("/nonexistent/file.json")));
+        assert!(!parse_scope_recommendation(Path::new(
+            "/nonexistent/file.json"
+        )));
     }
 
     #[test]
@@ -2774,7 +4579,20 @@ mod tests {
     fn test_format_user_context_all_fields() {
         let intake = r#"{"audience":"Data engineers","challenges":"Legacy systems","scope":"ETL pipelines","unique_setup":"Multi-cloud","claude_mistakes":"Assumes AWS"}"#;
         let tags = vec!["analytics".to_string(), "salesforce".to_string()];
-        let result = format_user_context(Some("my-skill"), &tags, Some("Healthcare"), Some("Analytics Lead"), Some(intake), None, None, None, None, None, None, None);
+        let result = format_user_context(
+            Some("my-skill"),
+            &tags,
+            Some("Healthcare"),
+            Some("Analytics Lead"),
+            Some(intake),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
         let ctx = result.unwrap();
         assert!(ctx.starts_with("## User Context\n"));
         assert!(ctx.contains("**Name**: my-skill"));
@@ -2795,7 +4613,20 @@ mod tests {
 
     #[test]
     fn test_format_user_context_partial_fields() {
-        let result = format_user_context(None, &[], Some("Fintech"), None, None, None, None, None, None, None, None, None);
+        let result = format_user_context(
+            None,
+            &[],
+            Some("Fintech"),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
         let ctx = result.unwrap();
         assert!(ctx.contains("**Industry**: Fintech"));
         assert!(!ctx.contains("**Function**"));
@@ -2803,19 +4634,58 @@ mod tests {
 
     #[test]
     fn test_format_user_context_empty_strings_skipped() {
-        let result = format_user_context(None, &[], Some(""), Some(""), None, None, None, None, None, None, None, None);
+        let result = format_user_context(
+            None,
+            &[],
+            Some(""),
+            Some(""),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
         assert!(result.is_none());
     }
 
     #[test]
     fn test_format_user_context_all_none() {
-        let result = format_user_context(None, &[], None, None, None, None, None, None, None, None, None, None);
+        let result = format_user_context(
+            None,
+            &[],
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
         assert!(result.is_none());
     }
 
     #[test]
     fn test_format_user_context_invalid_json_ignored() {
-        let result = format_user_context(None, &[], Some("Tech"), None, Some("not json"), None, None, None, None, None, None, None);
+        let result = format_user_context(
+            None,
+            &[],
+            Some("Tech"),
+            None,
+            Some("not json"),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
         let ctx = result.unwrap();
         assert!(ctx.contains("**Industry**: Tech"));
         assert!(!ctx.contains("Target Audience"));
@@ -2824,7 +4694,20 @@ mod tests {
     #[test]
     fn test_format_user_context_partial_intake() {
         let intake = r#"{"audience":"Engineers","scope":"APIs"}"#;
-        let result = format_user_context(None, &[], None, None, Some(intake), None, None, None, None, None, None, None);
+        let result = format_user_context(
+            None,
+            &[],
+            None,
+            None,
+            Some(intake),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
         let ctx = result.unwrap();
         assert!(ctx.contains("### Target Audience"));
         assert!(ctx.contains("Engineers"));
@@ -2854,50 +4737,63 @@ mod tests {
     // --- VD-801: parse_decisions_guard tests ---
 
     #[test]
-    fn test_parse_decisions_guard_zero_count_no_trigger() {
-        // decision_count: 0 is only used in scope recommendation path,
-        // which is already caught by checkpoint 1 — not a checkpoint 2 trigger
+    fn test_parse_decisions_guard_zero_count_triggers_guard() {
+        // decision_count: 0 in decisions.json means no decisions were produced — block step 3
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("decisions.md");
-        std::fs::write(&path, "---\ndecision_count: 0\nround: 1\n---\n## No decisions").unwrap();
-        assert!(!parse_decisions_guard(&path));
+        let path = tmp.path().join("decisions.json");
+        std::fs::write(
+            &path,
+            r#"{"metadata":{"decision_count":0,"round":1}}"#,
+        )
+        .unwrap();
+        assert!(parse_decisions_guard(&path));
     }
 
     #[test]
     fn test_parse_decisions_guard_contradictory() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("decisions.md");
-        std::fs::write(&path, "---\ndecision_count: 3\ncontradictory_inputs: true\n---\n").unwrap();
+        let path = tmp.path().join("decisions.json");
+        std::fs::write(
+            &path,
+            r#"{"metadata":{"decision_count":3,"contradictory_inputs":true}}"#,
+        )
+        .unwrap();
         assert!(parse_decisions_guard(&path));
     }
 
     #[test]
     fn test_parse_decisions_guard_normal() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("decisions.md");
-        std::fs::write(&path, "---\ndecision_count: 5\nround: 1\n---\n### D1: ...").unwrap();
+        let path = tmp.path().join("decisions.json");
+        std::fs::write(&path, r#"{"metadata":{"decision_count":5,"round":1}}"#).unwrap();
         assert!(!parse_decisions_guard(&path));
     }
 
     #[test]
     fn test_parse_decisions_guard_missing_file() {
-        assert!(!parse_decisions_guard(Path::new("/tmp/nonexistent-vd801-decisions.md")));
+        assert!(!parse_decisions_guard(Path::new(
+            "/tmp/nonexistent-vd801-decisions.json"
+        )));
     }
 
     #[test]
-    fn test_parse_decisions_guard_no_frontmatter() {
+    fn test_parse_decisions_guard_invalid_json() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("decisions.md");
-        std::fs::write(&path, "## Decisions\n### D1: something").unwrap();
+        let path = tmp.path().join("decisions.json");
+        std::fs::write(&path, "not valid json").unwrap();
         assert!(!parse_decisions_guard(&path));
     }
 
     #[test]
-    fn test_parse_decisions_guard_revised_not_blocked() {
-        // contradictory_inputs: revised means user has reviewed — must NOT block
+    fn test_parse_decisions_guard_contradictory_inputs_false() {
+        // contradictory_inputs: false must NOT block
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("decisions.md");
-        std::fs::write(&path, "---\ndecision_count: 3\ncontradictory_inputs: revised\n---\n").unwrap();
+        let path = tmp.path().join("decisions.json");
+        std::fs::write(
+            &path,
+            r#"{"metadata":{"decision_count":3,"contradictory_inputs":false}}"#,
+        )
+        .unwrap();
         assert!(!parse_decisions_guard(&path));
     }
 
@@ -2912,11 +4808,18 @@ mod tests {
                 "title": "Section 1",
                 "questions": questions
             }]
-        }).to_string()
+        })
+        .to_string()
     }
 
     /// Helper: build a question JSON object.
-    fn make_question(id: &str, choices: Vec<serde_json::Value>, answer_choice: Option<&str>, answer_text: Option<&str>, refinements: Option<Vec<serde_json::Value>>) -> serde_json::Value {
+    fn make_question(
+        id: &str,
+        choices: Vec<serde_json::Value>,
+        answer_choice: Option<&str>,
+        answer_text: Option<&str>,
+        refinements: Option<Vec<serde_json::Value>>,
+    ) -> serde_json::Value {
         let mut q = serde_json::json!({
             "id": id,
             "text": format!("Question {}", id),
@@ -2940,13 +4843,77 @@ mod tests {
     }
 
     #[test]
+    fn test_save_clarifications_content_writes_pretty_json() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace_path = tmp.path().join("workspace");
+        let workspace_str = workspace_path.to_string_lossy().to_string();
+        let payload = valid_clarifications_value().to_string();
+
+        save_clarifications_content("my-skill".to_string(), workspace_str, payload).unwrap();
+        let saved = std::fs::read_to_string(
+            workspace_path
+                .join("my-skill")
+                .join("context")
+                .join("clarifications.json"),
+        )
+        .unwrap();
+        assert!(saved.contains("\n  \"metadata\""));
+    }
+
+    #[test]
+    fn test_save_clarifications_content_rejects_invalid_json() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace_path = tmp.path().join("workspace");
+        let workspace_str = workspace_path.to_string_lossy().to_string();
+
+        let err = save_clarifications_content(
+            "my-skill".to_string(),
+            workspace_str,
+            "{not-valid-json}".to_string(),
+        )
+        .unwrap_err();
+        assert!(err.contains("Invalid clarifications JSON"));
+    }
+
+    #[test]
+    fn test_save_clarifications_content_rejects_invalid_schema() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace_path = tmp.path().join("workspace");
+        let workspace_str = workspace_path.to_string_lossy().to_string();
+        let invalid = serde_json::json!({
+            "version": "1",
+            "metadata": {
+                "question_count": 1,
+                "section_count": 1,
+                "refinement_count": 0,
+                "must_answer_count": 0,
+                "priority_questions": "Q1"
+            },
+            "sections": [],
+            "notes": []
+        });
+
+        let err = save_clarifications_content(
+            "my-skill".to_string(),
+            workspace_str,
+            invalid.to_string(),
+        )
+        .unwrap_err();
+        assert!(err.contains("priority_questions must be an array"));
+    }
+
+    #[test]
     fn test_autofill_copies_first_non_other_choice_to_empty_answer() {
-        let input = make_clarifications_json(vec![
-            make_question("q1", vec![
+        let input = make_clarifications_json(vec![make_question(
+            "q1",
+            vec![
                 make_choice("c1", "Use X", false),
                 make_choice("c2", "Other", true),
-            ], None, None, None),
-        ]);
+            ],
+            None,
+            None,
+            None,
+        )]);
         let (out, count) = super::autofill_answers(&input);
         assert_eq!(count, 1);
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
@@ -2957,11 +4924,13 @@ mod tests {
 
     #[test]
     fn test_autofill_skips_already_answered() {
-        let input = make_clarifications_json(vec![
-            make_question("q1", vec![
-                make_choice("c1", "Use X", false),
-            ], Some("c1"), Some("Use X"), None),
-        ]);
+        let input = make_clarifications_json(vec![make_question(
+            "q1",
+            vec![make_choice("c1", "Use X", false)],
+            Some("c1"),
+            Some("Use X"),
+            None,
+        )]);
         let (_, count) = super::autofill_answers(&input);
         assert_eq!(count, 0);
     }
@@ -2984,42 +4953,58 @@ mod tests {
 
     #[test]
     fn test_autofill_skips_other_only_choices() {
-        let input = make_clarifications_json(vec![
-            make_question("q1", vec![
-                make_choice("c1", "Other option", true),
-            ], None, None, None),
-        ]);
+        let input = make_clarifications_json(vec![make_question(
+            "q1",
+            vec![make_choice("c1", "Other option", true)],
+            None,
+            None,
+            None,
+        )]);
         let (_, count) = super::autofill_answers(&input);
-        assert_eq!(count, 0, "Should not fill when only 'other' choices available");
+        assert_eq!(
+            count, 0,
+            "Should not fill when only 'other' choices available"
+        );
     }
 
     #[test]
     fn test_autofill_picks_first_non_other_choice() {
-        let input = make_clarifications_json(vec![
-            make_question("q1", vec![
+        let input = make_clarifications_json(vec![make_question(
+            "q1",
+            vec![
                 make_choice("c1", "Other", true),
                 make_choice("c2", "Second Choice", false),
                 make_choice("c3", "Third Choice", false),
-            ], None, None, None),
-        ]);
+            ],
+            None,
+            None,
+            None,
+        )]);
         let (out, count) = super::autofill_answers(&input);
         assert_eq!(count, 1);
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         assert_eq!(v["sections"][0]["questions"][0]["answer_choice"], "c2");
-        assert_eq!(v["sections"][0]["questions"][0]["answer_text"], "Second Choice");
+        assert_eq!(
+            v["sections"][0]["questions"][0]["answer_text"],
+            "Second Choice"
+        );
     }
 
     #[test]
     fn test_autofill_does_not_touch_refinements() {
-        let input = make_clarifications_json(vec![
-            make_question("q1", vec![
-                make_choice("c1", "Use X", false),
-            ], Some("c1"), Some("Use X"), Some(vec![
-                make_question("r1", vec![
-                    make_choice("rc1", "Refine Y", false),
-                ], None, None, None),
-            ])),
-        ]);
+        let input = make_clarifications_json(vec![make_question(
+            "q1",
+            vec![make_choice("c1", "Use X", false)],
+            Some("c1"),
+            Some("Use X"),
+            Some(vec![make_question(
+                "r1",
+                vec![make_choice("rc1", "Refine Y", false)],
+                None,
+                None,
+                None,
+            )]),
+        )]);
         let (out, count) = super::autofill_answers(&input);
         assert_eq!(count, 0, "autofill_answers should not touch refinements");
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
@@ -3036,11 +5021,13 @@ mod tests {
 
     #[test]
     fn test_autofill_empty_answer_text_treated_as_empty() {
-        let input = make_clarifications_json(vec![
-            make_question("q1", vec![
-                make_choice("c1", "Use X", false),
-            ], None, Some(""), None),
-        ]);
+        let input = make_clarifications_json(vec![make_question(
+            "q1",
+            vec![make_choice("c1", "Use X", false)],
+            None,
+            Some(""),
+            None,
+        )]);
         let (out, count) = super::autofill_answers(&input);
         assert_eq!(count, 1);
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
@@ -3051,15 +5038,19 @@ mod tests {
 
     #[test]
     fn test_autofill_refinement_fills_empty_refinement_answer() {
-        let input = make_clarifications_json(vec![
-            make_question("q1", vec![
-                make_choice("c1", "Q answer", false),
-            ], Some("c1"), Some("Q answer"), Some(vec![
-                make_question("r1", vec![
-                    make_choice("rc1", "Refine Y", false),
-                ], None, None, None),
-            ])),
-        ]);
+        let input = make_clarifications_json(vec![make_question(
+            "q1",
+            vec![make_choice("c1", "Q answer", false)],
+            Some("c1"),
+            Some("Q answer"),
+            Some(vec![make_question(
+                "r1",
+                vec![make_choice("rc1", "Refine Y", false)],
+                None,
+                None,
+                None,
+            )]),
+        )]);
         let (out, count) = super::autofill_refinement_answers(&input);
         assert_eq!(count, 1);
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
@@ -3072,73 +5063,107 @@ mod tests {
 
     #[test]
     fn test_autofill_refinement_skips_answered() {
-        let input = make_clarifications_json(vec![
-            make_question("q1", vec![
-                make_choice("c1", "Q answer", false),
-            ], Some("c1"), Some("Q answer"), Some(vec![
-                make_question("r1", vec![
-                    make_choice("rc1", "Refine Y", false),
-                ], Some("rc1"), Some("Refine Y"), None),
-            ])),
-        ]);
+        let input = make_clarifications_json(vec![make_question(
+            "q1",
+            vec![make_choice("c1", "Q answer", false)],
+            Some("c1"),
+            Some("Q answer"),
+            Some(vec![make_question(
+                "r1",
+                vec![make_choice("rc1", "Refine Y", false)],
+                Some("rc1"),
+                Some("Refine Y"),
+                None,
+            )]),
+        )]);
         let (_, count) = super::autofill_refinement_answers(&input);
         assert_eq!(count, 0);
     }
 
     #[test]
     fn test_autofill_refinement_handles_multiple() {
-        let input = make_clarifications_json(vec![
-            make_question("q1", vec![
-                make_choice("c1", "Q1 answer", false),
-            ], Some("c1"), Some("Q1 answer"), Some(vec![
-                make_question("r1", vec![
-                    make_choice("rc1", "R1 rec", false),
-                ], None, None, None),
-                make_question("r2", vec![
-                    make_choice("rc2", "R2 rec", false),
-                ], Some("rc2"), Some("Already"), None),
-            ])),
-        ]);
+        let input = make_clarifications_json(vec![make_question(
+            "q1",
+            vec![make_choice("c1", "Q1 answer", false)],
+            Some("c1"),
+            Some("Q1 answer"),
+            Some(vec![
+                make_question(
+                    "r1",
+                    vec![make_choice("rc1", "R1 rec", false)],
+                    None,
+                    None,
+                    None,
+                ),
+                make_question(
+                    "r2",
+                    vec![make_choice("rc2", "R2 rec", false)],
+                    Some("rc2"),
+                    Some("Already"),
+                    None,
+                ),
+            ]),
+        )]);
         let (out, count) = super::autofill_refinement_answers(&input);
         assert_eq!(count, 1, "Only r1 should be filled");
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
-        assert_eq!(v["sections"][0]["questions"][0]["refinements"][0]["answer_choice"], "rc1");
-        assert_eq!(v["sections"][0]["questions"][0]["refinements"][1]["answer_text"], "Already");
+        assert_eq!(
+            v["sections"][0]["questions"][0]["refinements"][0]["answer_choice"],
+            "rc1"
+        );
+        assert_eq!(
+            v["sections"][0]["questions"][0]["refinements"][1]["answer_text"],
+            "Already"
+        );
     }
 
     #[test]
     fn test_autofill_refinement_skips_other_only() {
-        let input = make_clarifications_json(vec![
-            make_question("q1", vec![
-                make_choice("c1", "Q answer", false),
-            ], Some("c1"), Some("Q answer"), Some(vec![
-                make_question("r1", vec![
-                    make_choice("rc1", "Other option", true),
-                ], None, None, None),
-            ])),
-        ]);
+        let input = make_clarifications_json(vec![make_question(
+            "q1",
+            vec![make_choice("c1", "Q answer", false)],
+            Some("c1"),
+            Some("Q answer"),
+            Some(vec![make_question(
+                "r1",
+                vec![make_choice("rc1", "Other option", true)],
+                None,
+                None,
+                None,
+            )]),
+        )]);
         let (_, count) = super::autofill_refinement_answers(&input);
-        assert_eq!(count, 0, "Should not fill when only 'other' choices available");
+        assert_eq!(
+            count, 0,
+            "Should not fill when only 'other' choices available"
+        );
     }
 
     #[test]
     fn test_autofill_refinement_does_not_touch_q_level() {
-        let input = make_clarifications_json(vec![
-            make_question("q1", vec![
-                make_choice("c1", "Q rec", false),
-            ], None, None, Some(vec![
-                make_question("r1", vec![
-                    make_choice("rc1", "R rec", false),
-                ], None, None, None),
-            ])),
-        ]);
+        let input = make_clarifications_json(vec![make_question(
+            "q1",
+            vec![make_choice("c1", "Q rec", false)],
+            None,
+            None,
+            Some(vec![make_question(
+                "r1",
+                vec![make_choice("rc1", "R rec", false)],
+                None,
+                None,
+                None,
+            )]),
+        )]);
         let (out, count) = super::autofill_refinement_answers(&input);
         assert_eq!(count, 1);
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         // Q-level should still be null (untouched by refinement autofill)
         assert!(v["sections"][0]["questions"][0]["answer_choice"].is_null());
         // R-level should be filled
-        assert_eq!(v["sections"][0]["questions"][0]["refinements"][0]["answer_choice"], "rc1");
+        assert_eq!(
+            v["sections"][0]["questions"][0]["refinements"][0]["answer_choice"],
+            "rc1"
+        );
     }
 
     #[test]
@@ -3204,12 +5229,30 @@ mod tests {
 
         let section = generate_skills_section(&conn).unwrap();
 
-        assert!(section.contains("## Custom Skills"), "should use unified heading");
-        assert!(section.contains("### /test-practices"), "should list skill by name");
-        assert!(section.contains("Skill structure rules."), "should include description");
-        assert!(!section.contains("Read and follow the skill at"), "should not include path line");
-        assert!(!section.contains("## Skill Generation Guidance"), "old bundled heading must not appear");
-        assert!(!section.contains("## Imported Skills"), "old imported heading must not appear");
+        assert!(
+            section.contains("## Custom Skills"),
+            "should use unified heading"
+        );
+        assert!(
+            section.contains("### /test-practices"),
+            "should list skill by name"
+        );
+        assert!(
+            section.contains("Skill structure rules."),
+            "should include description"
+        );
+        assert!(
+            !section.contains("Read and follow the skill at"),
+            "should not include path line"
+        );
+        assert!(
+            !section.contains("## Skill Generation Guidance"),
+            "old bundled heading must not appear"
+        );
+        assert!(
+            !section.contains("## Imported Skills"),
+            "old imported heading must not appear"
+        );
     }
 
     #[test]
@@ -3234,7 +5277,10 @@ mod tests {
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
         let section = generate_skills_section(&conn).unwrap();
-        assert!(section.is_empty(), "inactive skill should produce empty section");
+        assert!(
+            section.is_empty(),
+            "inactive skill should produce empty section"
+        );
     }
 
     #[test]
@@ -3292,10 +5338,22 @@ mod tests {
         let section = generate_skills_section(&conn).unwrap();
 
         assert!(section.contains("## Custom Skills"), "unified heading");
-        assert!(section.contains("### /test-practices"), "bundled skill listed");
-        assert!(section.contains("### /data-analytics"), "imported skill listed");
-        assert!(section.contains("Skill structure rules."), "bundled description");
-        assert!(section.contains("Analytics patterns."), "imported description");
+        assert!(
+            section.contains("### /test-practices"),
+            "bundled skill listed"
+        );
+        assert!(
+            section.contains("### /data-analytics"),
+            "imported skill listed"
+        );
+        assert!(
+            section.contains("Skill structure rules."),
+            "bundled description"
+        );
+        assert!(
+            section.contains("Analytics patterns."),
+            "imported description"
+        );
         // Alphabetical order: data-analytics < test-practices
         let da_pos = section.find("### /data-analytics").unwrap();
         let tp_pos = section.find("### /test-practices").unwrap();
@@ -3342,13 +5400,87 @@ mod tests {
         let section = generate_skills_section(&conn).unwrap();
 
         // Must NOT contain trigger text or path directive
-        assert!(!section.contains("Read and follow"), "section must not contain 'Read and follow'");
-        assert!(!section.contains("When user asks about X"), "section must not contain trigger text");
-        assert!(!section.contains("SKILL.md"), "section must not contain skill path");
+        assert!(
+            !section.contains("Read and follow"),
+            "section must not contain 'Read and follow'"
+        );
+        assert!(
+            !section.contains("When user asks about X"),
+            "section must not contain trigger text"
+        );
+        assert!(
+            !section.contains("SKILL.md"),
+            "section must not contain skill path"
+        );
 
         // MUST contain description
-        assert!(section.contains("Skill description here."), "section must include description");
-        assert!(section.contains("### /my-skill"), "section must include skill heading");
+        assert!(
+            section.contains("Skill description here."),
+            "section must include description"
+        );
+        assert!(
+            section.contains("### /my-skill"),
+            "section must include skill heading"
+        );
     }
 
+    #[test]
+    fn test_deploy_skill_for_workflow_uses_bundled_source_for_bundled_rows() {
+        let conn = super::super::test_utils::create_test_db();
+        let workspace_tmp = tempfile::tempdir().unwrap();
+        let bundled_tmp = tempfile::tempdir().unwrap();
+
+        let workspace_path = workspace_tmp.path().to_string_lossy().to_string();
+        let bundled_skills_dir = bundled_tmp.path();
+
+        let bundled_research_dir = bundled_skills_dir.join("research");
+        std::fs::create_dir_all(&bundled_research_dir).unwrap();
+        std::fs::write(
+            bundled_research_dir.join("SKILL.md"),
+            "---\nname: research\ndescription: bundled\n---\n# Bundled Research",
+        )
+        .unwrap();
+
+        let deployed_research_dir = workspace_tmp
+            .path()
+            .join(".claude")
+            .join("skills")
+            .join("research");
+        std::fs::create_dir_all(&deployed_research_dir).unwrap();
+        std::fs::write(
+            deployed_research_dir.join("SKILL.md"),
+            "---\nname: research\ndescription: stale\n---\n# Stale Research",
+        )
+        .unwrap();
+
+        let ws = crate::types::WorkspaceSkill {
+            skill_id: "bundled-research".to_string(),
+            skill_name: "research".to_string(),
+            is_active: true,
+            disk_path: deployed_research_dir.to_string_lossy().to_string(),
+            imported_at: "2000-01-01T00:00:00Z".to_string(),
+            is_bundled: true,
+            description: Some("research".to_string()),
+            version: Some("1.0.0".to_string()),
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
+            purpose: Some("research".to_string()),
+            marketplace_source_url: None,
+        };
+        crate::db::insert_workspace_skill(&conn, &ws).unwrap();
+
+        deploy_skill_for_workflow(
+            &conn,
+            &workspace_path,
+            bundled_skills_dir,
+            "research",
+            "research",
+        );
+
+        let content = std::fs::read_to_string(deployed_research_dir.join("SKILL.md")).unwrap();
+        assert!(content.contains("Bundled Research"));
+        assert!(!content.contains("Stale Research"));
+    }
 }

@@ -36,6 +36,10 @@ export interface AppSettings {
   log_level: string
   extended_context: boolean
   extended_thinking: boolean
+  interleaved_thinking_beta?: boolean
+  sdk_effort?: string | null
+  fallback_model?: string | null
+  refine_prompt_suggestions?: boolean
   splash_shown: boolean
   github_oauth_token: string | null
   github_user_login: string | null
@@ -54,12 +58,14 @@ export interface SkillUpdateInfo {
   name: string
   path: string
   version: string
+  source_url?: string
 }
 
 export interface MarketplaceUpdateResult {
   library: SkillUpdateInfo[]
   workspace: SkillUpdateInfo[]
   registry_name: string | null
+  registry_names?: { source_url: string; registry_name: string }[]
 }
 
 export interface DeviceFlowResponse {
@@ -133,9 +139,12 @@ export interface NodeStatus {
 }
 
 export interface DepStatus {
+  code?: string | null
+  failure_kind?: string | null
   name: string
   ok: boolean
   detail: string
+  remediation?: string | null
 }
 
 export interface StartupDeps {

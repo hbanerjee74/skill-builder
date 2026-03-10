@@ -30,7 +30,17 @@ app/src-tauri/resources/node/*
 !app/src-tauri/resources/node/.gitkeep
 
 # Claude Code — ignore local config, track committed skills
-.claude/settings.local.json
 .claude/worktrees/
 
+# Git worktrees (local development isolation)
+.worktrees/
+
+# Local screenshots (not committed)
+screenshots-gitignore/
+
+# One-pagers and design drafts (local working documents, not committed)
+ONE-PAGERS/
+
+# Implementation plans (local development working documents, not committed)
+docs/plans/
 

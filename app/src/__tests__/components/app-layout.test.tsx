@@ -148,6 +148,7 @@ describe("AppLayout", () => {
         return new Promise<ReconciliationResult>((resolve) => {
           resolveReconcile = resolve;
         });
+      if (cmd === "list_models") return Promise.resolve([]);
       return Promise.reject(new Error(`Unmocked command: ${cmd}`));
     });
 
@@ -170,33 +171,71 @@ describe("AppLayout", () => {
     });
   });
 
-  it("shows info toast when auto_cleaned > 0", async () => {
-    mockInvokeCommands({
-      get_settings: defaultSettings,
-      reconcile_startup: { orphans: [], notifications: [], auto_cleaned: 3, discovered_skills: [] },
+  it("shows info toast when auto_cleaned > 0 after apply", async () => {
+    const user = userEvent.setup();
+    mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "get_settings") return Promise.resolve(defaultSettings);
+      if (cmd === "reconcile_startup" && args?.apply === true) {
+        return Promise.resolve({
+          orphans: [],
+          notifications: ["'my-skill' was reset from step 3 to step 0"],
+          auto_cleaned: 3,
+          discovered_skills: [],
+        });
+      }
+      if (cmd === "reconcile_startup") {
+        return Promise.resolve({
+          orphans: [],
+          notifications: ["'my-skill' was reset from step 3 to step 0"],
+          auto_cleaned: 0,
+          discovered_skills: [],
+        });
+      }
+      if (cmd === "list_models") return Promise.resolve([]);
+      return Promise.reject(new Error(`Unmocked command: ${cmd}`));
     });
 
     render(<AppLayout />);
-
     await waitFor(() => {
-      expect(toast.info).toHaveBeenCalledWith(
-        "Cleaned up 3 incomplete skills"
-      );
+      expect(screen.getByText("Startup Reconciliation")).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole("button", { name: /Apply Reconciliation/i }));
+    await waitFor(() => {
+      expect(toast.info).toHaveBeenCalledWith("Cleaned up 3 incomplete skills");
     });
   });
 
-  it("shows singular text when auto_cleaned is 1", async () => {
-    mockInvokeCommands({
-      get_settings: defaultSettings,
-      reconcile_startup: { orphans: [], notifications: [], auto_cleaned: 1, discovered_skills: [] },
+  it("shows singular text when auto_cleaned is 1 after apply", async () => {
+    const user = userEvent.setup();
+    mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "get_settings") return Promise.resolve(defaultSettings);
+      if (cmd === "reconcile_startup" && args?.apply === true) {
+        return Promise.resolve({
+          orphans: [],
+          notifications: ["'my-skill' was reset from step 3 to step 0"],
+          auto_cleaned: 1,
+          discovered_skills: [],
+        });
+      }
+      if (cmd === "reconcile_startup") {
+        return Promise.resolve({
+          orphans: [],
+          notifications: ["'my-skill' was reset from step 3 to step 0"],
+          auto_cleaned: 0,
+          discovered_skills: [],
+        });
+      }
+      if (cmd === "list_models") return Promise.resolve([]);
+      return Promise.reject(new Error(`Unmocked command: ${cmd}`));
     });
 
     render(<AppLayout />);
-
     await waitFor(() => {
-      expect(toast.info).toHaveBeenCalledWith(
-        "Cleaned up 1 incomplete skill"
-      );
+      expect(screen.getByText("Startup Reconciliation")).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole("button", { name: /Apply Reconciliation/i }));
+    await waitFor(() => {
+      expect(toast.info).toHaveBeenCalledWith("Cleaned up 1 incomplete skill");
     });
   });
 
@@ -229,17 +268,21 @@ describe("AppLayout", () => {
     expect(toast.warning).not.toHaveBeenCalled();
   });
 
-  it("renders content after acknowledging reconciliation dialog", async () => {
+  it("renders content after applying reconciliation dialog", async () => {
     const user = userEvent.setup();
-
-    mockInvokeCommands({
-      get_settings: defaultSettings,
-      reconcile_startup: {
-        orphans: [],
-        notifications: ["'my-skill' was reset from step 3 to step 0"],
-        auto_cleaned: 0,
-        discovered_skills: [],
-      },
+    mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "get_settings") return Promise.resolve(defaultSettings);
+      if (cmd === "reconcile_startup" && args?.apply === true) return Promise.resolve(emptyReconciliation);
+      if (cmd === "reconcile_startup") {
+        return Promise.resolve({
+          orphans: [],
+          notifications: ["'my-skill' was reset from step 3 to step 0"],
+          auto_cleaned: 0,
+          discovered_skills: [],
+        });
+      }
+      if (cmd === "list_models") return Promise.resolve([]);
+      return Promise.reject(new Error(`Unmocked command: ${cmd}`));
     });
 
     render(<AppLayout />);
@@ -249,13 +292,44 @@ describe("AppLayout", () => {
       expect(screen.getByText("Startup Reconciliation")).toBeInTheDocument();
     });
 
-    // Click the Acknowledge button
-    await user.click(screen.getByRole("button", { name: /Acknowledge/i }));
+    // Click the apply button
+    await user.click(screen.getByRole("button", { name: /Apply Reconciliation/i }));
 
     // Content should now render
     await waitFor(() => {
       expect(screen.getByTestId("outlet")).toBeInTheDocument();
     });
+  });
+
+  it("continues without changes when reconciliation is cancelled", async () => {
+    const user = userEvent.setup();
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_settings") return Promise.resolve(defaultSettings);
+      if (cmd === "reconcile_startup") {
+        return Promise.resolve({
+          orphans: [],
+          notifications: ["'my-skill' was reset from step 3 to step 0"],
+          auto_cleaned: 0,
+          discovered_skills: [],
+        });
+      }
+      if (cmd === "record_reconciliation_cancel") return Promise.resolve(undefined);
+      if (cmd === "list_models") return Promise.resolve([]);
+      return Promise.reject(new Error(`Unmocked command: ${cmd}`));
+    });
+
+    render(<AppLayout />);
+    await waitFor(() => {
+      expect(screen.getByText("Startup Reconciliation")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /Continue Without Applying/i }));
+    await waitFor(() => {
+      expect(screen.getByTestId("outlet")).toBeInTheDocument();
+    });
+    expect(toast.info).toHaveBeenCalledWith(
+      "Startup reconciliation skipped. No automatic changes were applied."
+    );
   });
 
   it("shows orphan resolution dialog when orphans exist", async () => {
@@ -288,6 +362,7 @@ describe("AppLayout", () => {
       if (cmd === "get_settings") return Promise.resolve(defaultSettings);
       if (cmd === "reconcile_startup")
         return Promise.reject(new Error("Workspace path not initialized"));
+      if (cmd === "list_models") return Promise.resolve([]);
       return Promise.reject(new Error(`Unmocked command: ${cmd}`));
     });
 
@@ -367,7 +442,7 @@ describe("AppLayout", () => {
       mockInvoke.mockImplementation((cmd: string) => {
         if (cmd === "get_settings") return Promise.resolve(marketplaceSettings);
         if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
-        if (cmd === "list_models") return Promise.reject(new Error("not needed"));
+        if (cmd === "list_models") return Promise.resolve([]);
         if (cmd === "parse_github_url") return Promise.resolve(repoInfo);
         if (cmd === "check_marketplace_updates") return Promise.resolve({
           library: [{ name: "sales-skill", path: "skills/sales-skill", version: "1.1.0" }],
@@ -380,8 +455,8 @@ describe("AppLayout", () => {
 
       await waitFor(() => {
         expect(toast.info).toHaveBeenCalledWith(
-          "Skills Library: update available for 1 skill: sales-skill",
-          expect.objectContaining({ duration: Infinity })
+          "Dashboard: update available for 1 skill: sales-skill",
+          expect.objectContaining({ duration: 5000 })
         );
       });
     });
@@ -390,7 +465,7 @@ describe("AppLayout", () => {
       mockInvoke.mockImplementation((cmd: string) => {
         if (cmd === "get_settings") return Promise.resolve(marketplaceSettings);
         if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
-        if (cmd === "list_models") return Promise.reject(new Error("not needed"));
+        if (cmd === "list_models") return Promise.resolve([]);
         if (cmd === "parse_github_url") return Promise.resolve(repoInfo);
         if (cmd === "check_marketplace_updates") return Promise.resolve({
           library: [],
@@ -404,7 +479,7 @@ describe("AppLayout", () => {
       await waitFor(() => {
         expect(toast.info).toHaveBeenCalledWith(
           "Settings \u2192 Skills: update available for 1 skill: hr-skill",
-          expect.objectContaining({ duration: Infinity })
+          expect.objectContaining({ duration: 5000 })
         );
       });
     });
@@ -413,7 +488,7 @@ describe("AppLayout", () => {
       mockInvoke.mockImplementation((cmd: string) => {
         if (cmd === "get_settings") return Promise.resolve({ ...marketplaceSettings, auto_update: true });
         if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
-        if (cmd === "list_models") return Promise.reject(new Error("not needed"));
+        if (cmd === "list_models") return Promise.resolve([]);
         if (cmd === "parse_github_url") return Promise.resolve(repoInfo);
         if (cmd === "check_marketplace_updates") return Promise.resolve({
           library: [{ name: "sales-skill", path: "skills/sales-skill", version: "1.1.0" }],
@@ -438,7 +513,7 @@ describe("AppLayout", () => {
       mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
         if (cmd === "get_settings") return Promise.resolve({ ...marketplaceSettings, auto_update: true });
         if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
-        if (cmd === "list_models") return Promise.reject(new Error("not needed"));
+        if (cmd === "list_models") return Promise.resolve([]);
         if (cmd === "parse_github_url") return Promise.resolve(repoInfo);
         if (cmd === "check_marketplace_updates") return Promise.resolve({
           library: [
@@ -467,7 +542,7 @@ describe("AppLayout", () => {
       mockInvoke.mockImplementation((cmd: string) => {
         if (cmd === "get_settings") return Promise.resolve(marketplaceSettings);
         if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
-        if (cmd === "list_models") return Promise.reject(new Error("not needed"));
+        if (cmd === "list_models") return Promise.resolve([]);
         if (cmd === "parse_github_url") return Promise.resolve(repoInfo);
         if (cmd === "check_marketplace_updates") return Promise.resolve({
           library: [],
@@ -491,8 +566,7 @@ describe("AppLayout", () => {
       mockInvoke.mockImplementation((cmd: string) => {
         if (cmd === "get_settings") return Promise.resolve(marketplaceSettings);
         if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
-        if (cmd === "list_models") return Promise.reject(new Error("not needed"));
-        if (cmd === "parse_github_url") return Promise.resolve(repoInfo);
+        if (cmd === "list_models") return Promise.resolve([]);
         if (cmd === "check_marketplace_updates") return Promise.reject(new Error("marketplace.json not found"));
         return Promise.resolve(undefined);
       });
@@ -502,7 +576,72 @@ describe("AppLayout", () => {
       await waitFor(() => {
         expect(toast.error).toHaveBeenCalledWith(
           "Marketplace update check failed: marketplace.json not found",
-          expect.objectContaining({ duration: 8000 })
+          expect.objectContaining({ duration: Infinity })
+        );
+      });
+    });
+
+    it("skips marketplace update check when all registries are disabled", async () => {
+      mockInvoke.mockImplementation((cmd: string) => {
+        if (cmd === "get_settings") {
+          return Promise.resolve({
+            ...marketplaceSettings,
+            marketplace_registries: [
+              { name: "Disabled", source_url: "https://github.com/owner/skill-marketplace", enabled: false },
+            ],
+          });
+        }
+        if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
+        if (cmd === "list_models") return Promise.resolve([]);
+        return Promise.resolve(undefined);
+      });
+
+      render(<AppLayout />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("outlet")).toBeInTheDocument();
+      });
+      const calls = mockInvoke.mock.calls.map((c) => c[0]);
+      expect(calls).not.toContain("check_marketplace_updates");
+    });
+
+    it("refreshes stored registry name when backend reports a different name", async () => {
+      mockInvoke.mockImplementation((cmd: string) => {
+        if (cmd === "get_settings") return Promise.resolve(marketplaceSettings);
+        if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
+        if (cmd === "list_models") return Promise.resolve([]);
+        if (cmd === "check_marketplace_updates") {
+          return Promise.resolve({
+            library: [],
+            workspace: [],
+            registry_names: [
+              {
+                source_url: "https://github.com/owner/skill-marketplace",
+                registry_name: "Renamed Registry",
+              },
+            ],
+          });
+        }
+        if (cmd === "save_settings") return Promise.resolve(undefined);
+        return Promise.resolve(undefined);
+      });
+
+      render(<AppLayout />);
+
+      await waitFor(() => {
+        expect(mockInvoke).toHaveBeenCalledWith(
+          "save_settings",
+          expect.objectContaining({
+            settings: expect.objectContaining({
+              marketplace_registries: [
+                {
+                  name: "Renamed Registry",
+                  source_url: "https://github.com/owner/skill-marketplace",
+                  enabled: true,
+                },
+              ],
+            }),
+          })
         );
       });
     });

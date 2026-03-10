@@ -7,19 +7,21 @@ import type { SidecarConfig } from "./config.js";
  * Agent / model resolution (settingSources: ['project'] always passed for project settings):
  *  - agentName only  → agent (front-matter model used)
  *  - model only      → model
- *  - both            → agent + model (model overrides front-matter)
+ *  - both            → agent only (front-matter model authoritative)
+ *
+ * @param pluginPaths  Absolute paths to installed plugin directories discovered by the caller.
+ *                     Each entry becomes { type: 'local', path } in the SDK plugins array.
  */
 export function buildQueryOptions(
   config: SidecarConfig,
   abortController: AbortController,
+  pluginPaths: string[],
   stderr?: (data: string) => void,
 ) {
   // --- agent / model resolution ---
-  const agentField = config.agentName ? { agent: config.agentName } : {};
-
-  // When model is set, always pass it — whether it's the sole identifier
-  // (model-only) or overriding the agent's front-matter model (both).
-  const modelField = config.model ? { model: config.model } : {};
+  const hasAgent = typeof config.agentName === "string" && config.agentName.length > 0;
+  const agentField = hasAgent ? { agent: config.agentName } : {};
+  const modelField = !hasAgent && config.model ? { model: config.model } : {};
 
   // Pass the API key through the SDK's env option instead of mutating
   // process.env, which avoids races on concurrent requests.
@@ -27,14 +29,17 @@ export function buildQueryOptions(
     ? { env: { ...process.env, ANTHROPIC_API_KEY: config.apiKey } }
     : {};
 
+  const pluginsField = pluginPaths.length > 0
+    ? { plugins: pluginPaths.map((p) => ({ type: "local" as const, path: p })) }
+    : {};
+
   return {
     ...agentField,
     ...modelField,
     ...envField,
-    // Include the full Claude Code system prompt so the model knows how to
-    // use tools (Read, Write, Bash, Skill, etc.) and follows CC conventions.
-    systemPrompt: { type: 'preset' as const, preset: 'claude_code' as const },
-    // Load project settings (skill discovery, CLAUDE.md) from {cwd}/.claude/.
+    ...pluginsField,
+    // Load project settings from the project workspace at {cwd}
+    // (workspace-root CLAUDE.md plus .claude/ skills/agents).
     // 'user' is intentionally excluded — it causes the SDK to scan
     // ~/.claude/skills/ (wasted reads) and the sidecar can't use the
     // user's MCP servers anyway (those are CLI-process-only).
@@ -54,9 +59,14 @@ export function buildQueryOptions(
     ...(config.pathToClaudeCodeExecutable
       ? { pathToClaudeCodeExecutable: config.pathToClaudeCodeExecutable }
       : {}),
-    ...(config.sessionId ? { resume: config.sessionId } : {}),
     ...(config.betas ? { betas: config.betas as Options['betas'] } : {}),
-    ...(config.maxThinkingTokens ? { maxThinkingTokens: config.maxThinkingTokens } : {}),
+    ...(config.thinking ? { thinking: config.thinking as Options["thinking"] } : {}),
+    ...(config.effort ? { effort: config.effort as Options["effort"] } : {}),
+    ...(config.fallbackModel ? { fallbackModel: config.fallbackModel } : {}),
+    ...(config.outputFormat ? { outputFormat: config.outputFormat as Options["outputFormat"] } : {}),
+    ...(typeof config.promptSuggestions === "boolean"
+      ? { promptSuggestions: config.promptSuggestions }
+      : {}),
     ...(stderr ? { stderr } : {}),
   };
 }

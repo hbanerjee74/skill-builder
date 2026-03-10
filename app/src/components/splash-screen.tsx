@@ -10,17 +10,39 @@ interface SplashScreenProps {
 }
 
 function DepRow({ dep }: { dep: DepStatus }) {
+  const failureKindLabel =
+    dep.failure_kind === "compatibility"
+      ? "Compatibility issue"
+      : dep.failure_kind === "transient"
+        ? "Transient startup issue"
+        : dep.failure_kind === "missing_dependency"
+          ? "Missing dependency"
+          : null;
+
   return (
     <div className="flex items-start gap-2 text-left text-sm">
       {dep.ok ? (
-        <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-500" />
+        <CheckCircle2
+          className="mt-0.5 size-4 shrink-0"
+          style={{ color: "var(--color-seafoam)" }}
+        />
       ) : (
         <XCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
       )}
       <div className="min-w-0 flex-1">
         <p className="font-medium">{dep.name}</p>
         {!dep.ok && (
-          <p className="text-muted-foreground break-all">{dep.detail}</p>
+          <div className="space-y-1">
+            {failureKindLabel && (
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                {failureKindLabel}
+              </p>
+            )}
+            <p className="text-muted-foreground break-all">{dep.detail}</p>
+            {dep.remediation && (
+              <p className="text-xs text-foreground/80">Fix: {dep.remediation}</p>
+            )}
+          </div>
         )}
       </div>
     </div>
@@ -50,19 +72,24 @@ export function SplashScreen({ onDismiss, onReady }: SplashScreenProps) {
   }, [isChecking, deps]);
 
   const hasFailed = !isChecking && (error !== null || (deps !== null && !deps.all_ok));
+  const failedChecks = deps?.checks.filter((dep) => !dep.ok) ?? [];
+  const hasCompatibilityFailure = failedChecks.some((dep) => dep.failure_kind === "compatibility");
+  const hasTransientFailure = failedChecks.some((dep) => dep.failure_kind === "transient");
 
   return (
     <div
       data-testid="splash-screen"
       className={`fixed inset-0 z-50 flex items-center justify-center overflow-hidden transition-all duration-500 ${fading ? "opacity-0 scale-[0.98]" : "opacity-100 scale-100"}`}
     >
-      {/* Gradient backdrop */}
+      {/* Gradient backdrop — diagonal wash */}
       <div className="absolute inset-0 bg-background">
-        <div className="absolute inset-0 opacity-30 dark:opacity-20">
-          <div className="absolute -top-1/4 -left-1/4 h-3/4 w-3/4 rounded-full bg-[oklch(0.7_0.12_210)] blur-[120px]" />
-          <div className="absolute -right-1/4 -bottom-1/4 h-3/4 w-3/4 rounded-full bg-[oklch(0.7_0.10_208)] blur-[120px]" />
-          <div className="absolute top-1/2 left-1/2 h-1/2 w-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[oklch(0.7_0.08_160)] blur-[100px]" />
-        </div>
+        <div
+          className="absolute inset-0 opacity-60 dark:opacity-40"
+          style={{
+            background:
+              "linear-gradient(135deg, color-mix(in oklch, var(--color-pacific), transparent 82%) 0%, transparent 48%, color-mix(in oklch, var(--color-seafoam), transparent 88%) 100%)",
+          }}
+        />
       </div>
       {/* Card */}
       <div className="relative z-10 flex max-w-lg flex-col items-center gap-6 rounded-xl border bg-card p-10 text-center shadow-lg">
@@ -98,6 +125,19 @@ export function SplashScreen({ onDismiss, onReady }: SplashScreenProps) {
             ))}
           </div>
         </div>
+
+        {!isChecking && failedChecks.length > 0 && (
+          <div className="w-full rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-left text-sm">
+            <p className="font-medium text-destructive">Startup blocked by dependency checks</p>
+            <p className="mt-1 text-muted-foreground">
+              {hasCompatibilityFailure
+                ? "Compatibility issues need a runtime update before the app can continue."
+                : hasTransientFailure
+                  ? "Transient startup issues detected. Retry first; if the problem persists, use the suggested fix."
+                  : "Resolve the missing dependencies listed above, then retry startup."}
+            </p>
+          </div>
+        )}
 
         <p className="text-xs text-muted-foreground/50">
           Experimental software — not for production use

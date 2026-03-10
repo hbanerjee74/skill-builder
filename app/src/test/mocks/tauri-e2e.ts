@@ -29,9 +29,10 @@ const mockResponses: Record<string, unknown> = {
   check_startup_deps: {
     all_ok: true,
     checks: [
-      { name: "Node.js", ok: true, detail: "v20.11.0 (system)" },
-      { name: "Agent sidecar", ok: true, detail: "sidecar/dist/agent-runner.js" },
-      { name: "Claude SDK", ok: true, detail: "sidecar/dist/sdk/cli.js" },
+      { code: "node_runtime", name: "Node.js", ok: true, detail: "v20.11.0 (system)" },
+      { code: "agent_sidecar_bundle", name: "Agent sidecar", ok: true, detail: "sidecar/dist/agent-runner.js" },
+      { code: "claude_sdk_cli", name: "Claude SDK", ok: true, detail: "sidecar/dist/sdk/cli.js" },
+      { code: "git_binary", name: "Git", ok: true, detail: "git version 2.50.1" },
     ],
   },
   list_skills: [],
@@ -79,6 +80,7 @@ const mockResponses: Record<string, unknown> = {
   cleanup_skill_sidecar: undefined,
   // Reconciliation
   reconcile_startup: { orphans: [], notifications: [], auto_cleaned: 0, discovered_skills: [] },
+  record_reconciliation_cancel: undefined,
   // Skill locks
   acquire_lock: undefined,
   release_lock: undefined,
@@ -126,7 +128,7 @@ const mockResponses: Record<string, unknown> = {
     is_bundled: false,
   },
   toggle_skill_active: undefined,
-  delete_imported_skill: undefined,
+  delete_workspace_skill: undefined,
   export_skill: "/tmp/test-skill.zip",
   get_skill_content: "# Test Skill\n\nThis is a test skill.\n\n## Instructions\n\nFollow these steps...",
   // GitHub import
@@ -164,9 +166,12 @@ const mockResponses: Record<string, unknown> = {
   // Usage
   get_usage_summary: { total_cost: 0, total_runs: 0, avg_cost_per_run: 0 },
   get_recent_workflow_sessions: [],
+  get_agent_runs: [],
   get_session_agent_runs: [],
   get_usage_by_step: [],
   get_usage_by_model: [],
+  get_usage_by_day: [],
+  get_workflow_skill_names: [],
   reset_usage: undefined,
   // Transition gate (answer evaluator)
   run_answer_evaluator: "gate-agent-001",
@@ -174,6 +179,8 @@ const mockResponses: Record<string, unknown> = {
   log_gate_decision: undefined,
   // Workflow extras
   write_file: undefined,
+  materialize_answer_evaluation_output: undefined,
+  materialize_workflow_step_output: undefined,
   get_disabled_steps: [],
   end_workflow_session: undefined,
   preview_step_reset: [],
@@ -181,19 +188,115 @@ const mockResponses: Record<string, unknown> = {
   verify_step_output: true,
 };
 
+function resolveReadFileMock(
+  value: unknown,
+  args?: Record<string, unknown>,
+): unknown {
+  // Back-compat: direct string payload.
+  if (typeof value === "string") return value;
+
+  // Path-keyed map payload:
+  // {
+  //   "/abs/path/to/file": "content",
+  //   "*": "fallback content"
+  // }
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const pathArg = typeof args?.filePath === "string"
+      ? args.filePath
+      : (typeof args?.path === "string" ? args.path : null);
+    const map = value as Record<string, unknown>;
+    if (pathArg && pathArg in map) return map[pathArg];
+    if ("*" in map) return map["*"];
+  }
+
+  return value;
+}
+
+function resolveContextFilePathCandidates(
+  args?: Record<string, unknown>,
+  skillsPathOverride?: string | null,
+): string[] {
+  const skillName = typeof args?.skillName === "string" ? args.skillName : "";
+  const workspacePath = typeof args?.workspacePath === "string" ? args.workspacePath : "";
+  const fileName = typeof args?.fileName === "string" ? args.fileName : "";
+
+  const requestedFile = fileName || "clarifications.json";
+  const skillsPath = skillsPathOverride ?? defaultSettings.skills_path;
+
+  const candidates: string[] = [];
+  if (skillsPath && skillName) {
+    candidates.push(`${skillsPath}/${skillName}/context/${requestedFile}`);
+  }
+  if (workspacePath && skillName) {
+    candidates.push(`${workspacePath}/${skillName}/context/${requestedFile}`);
+  }
+  return candidates;
+}
+
+function resolveContextFileCommand(
+  cmd: string,
+  args: Record<string, unknown> | undefined,
+  readFileSource: unknown,
+  skillsPathOverride?: string | null,
+): unknown {
+  const fileName = cmd === "get_clarifications_content"
+    ? "clarifications.json"
+    : cmd === "get_decisions_content"
+      ? "decisions.json"
+      : (typeof args?.fileName === "string" ? args.fileName : "");
+
+  const candidates = resolveContextFilePathCandidates({ ...(args ?? {}), fileName }, skillsPathOverride);
+  for (const candidate of candidates) {
+    const resolved = resolveReadFileMock(readFileSource, { filePath: candidate, path: candidate });
+    if (typeof resolved === "string") return resolved;
+  }
+
+  // Fall back to wildcard/opaque read_file behavior.
+  return resolveReadFileMock(readFileSource, args);
+}
+
 export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   // Allow tests to override via window
   const overrides = (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ as
     | Record<string, unknown>
     | undefined;
   if (overrides && cmd in overrides) {
-    const val = overrides[cmd];
+    let val = overrides[cmd];
+    if (cmd === "read_file") {
+      val = resolveReadFileMock(val, args);
+    }
+    if (typeof val === "string" && val.startsWith("__throw__:")) {
+      throw new Error(val.slice("__throw__:".length));
+    }
     if (val instanceof Error) throw val;
     return val as T;
   }
 
+  if (
+    cmd === "get_clarifications_content"
+    || cmd === "get_decisions_content"
+    || cmd === "get_context_file_content"
+  ) {
+    const skillsPathOverride =
+      overrides
+      && typeof overrides.get_settings === "object"
+      && overrides.get_settings !== null
+      && !Array.isArray(overrides.get_settings)
+      && typeof (overrides.get_settings as Record<string, unknown>).skills_path === "string"
+      ? (overrides.get_settings as Record<string, unknown>).skills_path as string
+      : null;
+    const readSource = overrides && "read_file" in overrides
+      ? overrides.read_file
+      : mockResponses.read_file;
+    return resolveContextFileCommand(cmd, args, readSource, skillsPathOverride) as T;
+  }
+
   if (cmd in mockResponses) {
-    return mockResponses[cmd] as T;
+    let val = mockResponses[cmd];
+    if (cmd === "read_file") {
+      val = resolveReadFileMock(val, args);
+    }
+    return val as T;
   }
 
   console.warn(`[tauri-e2e-mock] Unhandled invoke: ${cmd}`, args);

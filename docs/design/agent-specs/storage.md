@@ -10,11 +10,11 @@ For artifact file formats, see [canonical-format.md](canonical-format.md).
 
 | Location | Path | Purpose | Lifecycle |
 |---|---|---|---|
-| **Database** | Tauri app data dir (`app_data_dir()`) + `skill-builder.db` — macOS: `~/Library/Application Support/com.skillbuilder.app/skill-builder.db`, Linux: `~/.local/share/com.skillbuilder.app/skill-builder.db` | All workflow state, settings, agent runs — single source of truth after reconciliation | Persists permanently; never in the workspace |
-| **Workspace** | `{home}/.vibedata/skill-builder/` | Transient working directory: agent infrastructure, per-skill scratch dirs, logs | Recreated on startup if missing |
+| **Database** | Tauri app data dir (`app_data_dir()`) + `skill-builder.db` — macOS: `~/Library/Application Support/com.vibedata.skill-builder/skill-builder.db`, Linux: `~/.local/share/com.vibedata.skill-builder/skill-builder.db` | All workflow state, settings, agent runs — single source of truth after reconciliation | Persists permanently; never in the workspace |
+| **Workspace** | `app_local_data_dir()/workspace/` | Transient working directory: agent infrastructure, per-skill scratch dirs, logs | Recreated on startup if missing |
 | **Skills path** | User-configured, default `~/skill-builder/` | Permanent skill output: context files, SKILL.md, references | Persists across app restarts; git-tracked |
 
-The workspace lives at `~/.vibedata/skill-builder/`. The constants `WORKSPACE_PARENT` (`.vibedata`) and `WORKSPACE_SUBDIR` (`skill-builder`) are defined in `workspace.rs`. The parent is `dirs::home_dir()` — it follows the user's home directory, not a fixed absolute path. On first launch after upgrading from an older version, the app automatically migrates `~/.vibedata` to `~/.vibedata/skill-builder`.
+The workspace path is resolved from Tauri `app_local_data_dir()` with `workspace/` appended (see `app/src-tauri/src/lib.rs` and `app/src-tauri/src/commands/workspace.rs`). Legacy `~/.vibedata` handling exists only as best-effort cleanup for older builds.
 
 The skills path defaults to `~/skill-builder/` but is set by the user on first launch. It can be changed in Settings; the app moves the directory and preserves git history.
 
@@ -22,11 +22,11 @@ The skills path defaults to `~/skill-builder/` but is set by the user on first l
 
 ## Directory Layout
 
-### Workspace (`{home}/.vibedata/skill-builder/`)
+### Workspace (`app_local_data_dir()/workspace/`)
 
 ```text
-~/.vibedata/
-└── skill-builder/
+<app_local_data_dir>/
+└── workspace/
     ├── .claude/
     │   ├── CLAUDE.md                 # Rebuilt on startup: base + active skills + user customization
     │   ├── agents/                   # Bundled agent prompts, copied from agents/ on startup
@@ -56,9 +56,8 @@ The per-skill directory (`{skill-name}/`) is a **marker directory**: its existen
     ├── SKILL.md                  # Final skill output — written by generate-skill agent (step 3)
     ├── context/                  # Created empty by Rust on skill creation
     │   ├── clarifications.json   # Written by research-orchestrator (step 0); updated by detailed-research (step 1)
-    │   ├── research-plan.md      # Written by research-orchestrator (step 0)
     │   ├── answer-evaluation.json # Written by answer-evaluator (gate check at steps 0 and 1)
-    │   └── decisions.md          # Written by confirm-decisions (step 2)
+    │   └── decisions.json        # Written by confirm-decisions (step 2)
     └── references/               # Created empty by Rust on skill creation
         └── *.md                  # Written by generate-skill agent (step 3)
 ```
@@ -79,10 +78,9 @@ The per-skill directory (`{skill-name}/`) is a **marker directory**: its existen
 | `{skill}/context/` (empty) | Rust | `create_skill` | `{skills_path}/{skill}/` |
 | `{skill}/references/` (empty) | Rust | `create_skill` | `{skills_path}/{skill}/` |
 | `context/clarifications.json` | `research-orchestrator` | Step 0 | `{skills_path}/{skill}/context/` |
-| `context/research-plan.md` | `research-orchestrator` | Step 0 | `{skills_path}/{skill}/context/` |
 | `context/clarifications.json` | `detailed-research` | Step 1 (adds refinements in-place) | `{skills_path}/{skill}/context/` |
 | `context/answer-evaluation.json` | `answer-evaluator` | Gate check at steps 0 and 1 | `{skills_path}/{skill}/context/` |
-| `context/decisions.md` | `confirm-decisions` | Step 2 | `{skills_path}/{skill}/context/` |
+| `context/decisions.json` | `confirm-decisions` | Step 2 | `{skills_path}/{skill}/context/` |
 | `SKILL.md` | `generate-skill` | Step 3 | `{skills_path}/{skill}/` |
 | `references/*.md` | `generate-skill` | Step 3 | `{skills_path}/{skill}/references/` |
 
@@ -90,13 +88,13 @@ The per-skill directory (`{skill-name}/`) is a **marker directory**: its existen
 
 ## Agent Working Directory
 
-Agents run with `cwd = {workspace}` (i.e., `~/.vibedata/skill-builder/`). The app passes the following paths explicitly in the agent prompt:
+Agents run with `cwd = {workspace}` (i.e., `app_local_data_dir()/workspace/`). **SDK calling protocol:** the app sends only **skill name** and **workspace directory** in the prompt. Before each run, the app writes `{workspace_dir}/.skill_output_dir` with the absolute path to the skill output directory. Agents read `user-context.md` and `.skill_output_dir` first; they derive **context_dir** as `workspace_dir/context` and **skill output directory** from the path in `.skill_output_dir`.
 
-| Prompt variable | Resolved path | Purpose |
+| Derived / file | Resolved path | Purpose |
 |---|---|---|
-| `workspace directory` | `{workspace}/{skill-name}/` | Where `user-context.md` lives; agents read it from here |
-| `context directory` | `{skills_path}/{skill-name}/context/` | Where context files are read and written |
-| `skill output directory` | `{skills_path}/{skill-name}/` | Where `SKILL.md` and `references/` are written |
+| `workspace directory` | `{workspace}/{skill-name}/` | Where `user-context.md` and `.skill_output_dir` live |
+| `context_dir` | `workspace_dir/context` | Where `clarifications.json`, `decisions.json`, etc. live |
+| `skill output directory` | path in `.skill_output_dir` | Where `SKILL.md` and `references/` are written |
 
 Agents are told to read only specific named files and never create directories — the app pre-creates all directories before launching each step.
 
@@ -106,13 +104,13 @@ Agents are told to read only specific named files and never create directories �
 
 On every launch, `lib.rs` calls `init_workspace()` followed by `reconcile_startup()`.
 
-### 1. Migrate workspace path (one-time, first launch after upgrade)
+### 1. Cleanup legacy workspace folder (best effort)
 
-If `~/.vibedata` exists and contains data but `~/.vibedata/skill-builder` does not yet exist, the app moves the old workspace into the new location using a three-step atomic rename. Safe to run on every startup — skips if already migrated or if the old directory is absent.
+If `~/.vibedata` exists from pre-DataDir builds, the app attempts best-effort cleanup. This is safe to run on startup and ignored when the legacy folder is absent or not removable.
 
 ### 2. Resolve workspace path
 
-`dirs::home_dir()` + `.vibedata/skill-builder` → absolute path. Create directory if missing.
+`app_local_data_dir()` + `workspace` → absolute path. Create directory if missing.
 
 ### 3. Deploy agent infrastructure
 
@@ -156,9 +154,9 @@ The reconciler can infer step completion from files on disk:
 
 | Step | Detectable? | Evidence files (in `{skills_path}/{skill-name}/`) |
 |---|---|---|
-| 0 (Research) | Yes | `context/research-plan.md`, `context/clarifications.json` |
+| 0 (Research) | Yes | `context/clarifications.json` |
 | 1 (Detailed Research) | No | Edits `clarifications.json` in-place; no unique artifact |
-| 2 (Confirm Decisions) | Yes | `context/decisions.md` |
+| 2 (Confirm Decisions) | Yes | `context/decisions.json` |
 | 3 (Generate Skill) | Yes | `SKILL.md` |
 
 A step is only counted if **all** expected files exist. Partial output is cleaned up.

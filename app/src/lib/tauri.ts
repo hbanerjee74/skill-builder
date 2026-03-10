@@ -123,6 +123,16 @@ export const runWorkflowStep = (
   workspacePath: string,
 ) => invoke<string>("run_workflow_step", { skillName, stepId, workspacePath });
 
+export const materializeWorkflowStepOutput = (
+  skillName: string,
+  stepId: number,
+  structuredOutput: unknown,
+) => invoke<void>("materialize_workflow_step_output", {
+  skillName,
+  stepId,
+  structuredOutput,
+});
+
 export const packageSkill = (
   skillName: string,
   workspacePath: string,
@@ -133,6 +143,15 @@ export const resetWorkflowStep = (
   skillName: string,
   fromStepId: number,
 ) => invoke("reset_workflow_step", { workspacePath, skillName, fromStepId });
+
+/** Navigate back to a completed step: preserves target step's output files,
+ *  resets only subsequent steps in DB, and sets current_step = targetStepId.
+ *  Use this instead of resetWorkflowStep when the target step should stay "completed". */
+export const navigateBackToStepDb = (
+  workspacePath: string,
+  skillName: string,
+  targetStepId: number,
+): Promise<void> => invoke<void>("navigate_back_to_step", { workspacePath, skillName, targetStepId });
 
 export interface StepResetPreview {
   step_id: number;
@@ -208,9 +227,6 @@ export const listSkillFiles = (workspacePath: string, skillName: string) =>
 
 // --- Lifecycle ---
 
-export const hasRunningAgents = (workflowSessionId?: string | null) =>
-  invoke<boolean>("has_running_agents", { workflowSessionId: workflowSessionId ?? null });
-
 export const getWorkspacePath = () =>
   invoke<string>("get_workspace_path");
 
@@ -232,8 +248,19 @@ export const endWorkflowSession = (sessionId: string) =>
 
 // --- Reconciliation ---
 
-export const reconcileStartup = () =>
-  invoke<ReconciliationResult>("reconcile_startup");
+export const reconcileStartup = (apply = false) =>
+  apply
+    ? invoke<ReconciliationResult>("reconcile_startup", { apply: true })
+    : invoke<ReconciliationResult>("reconcile_startup");
+
+export const recordReconciliationCancel = (
+  notificationCount: number,
+  discoveredCount: number,
+) =>
+  invoke<void>("record_reconciliation_cancel", {
+    notificationCount,
+    discoveredCount,
+  });
 
 export const resolveOrphan = (skillName: string, action: "delete" | "keep") =>
   invoke("resolve_orphan", { skillName, action });
@@ -343,6 +370,9 @@ export const getSessionAgentRuns = (sessionId: string) =>
 export const getStepAgentRuns = (skillName: string, stepId: number) =>
   invoke<AgentRunRecord[]>("get_step_agent_runs", { skillName, stepId });
 
+export const getAgentRuns = (hideCancelled: boolean = false, startDate?: string | null, skillName?: string | null, modelFamily?: string | null, limit: number = 500) =>
+  invoke<AgentRunRecord[]>("get_agent_runs", { hideCancelled, startDate: startDate ?? null, skillName: skillName ?? null, modelFamily: modelFamily ?? null, limit });
+
 export const getUsageByStep = (hideCancelled: boolean = false, startDate?: string | null, skillName?: string | null) =>
   invoke<UsageByStep[]>("get_usage_by_step", { hideCancelled, startDate: startDate ?? null, skillName: skillName ?? null });
 
@@ -371,12 +401,15 @@ export async function getDashboardSkillNames(): Promise<string[]> {
   return invoke<string[]>("get_dashboard_skill_names")
 }
 
-export async function listSkills(workspacePath: string): Promise<SkillSummary[]> {
-  return invoke<SkillSummary[]>("list_skills", { workspacePath })
+export async function listSkills(workspacePath: string, sourceUrl?: string | null): Promise<SkillSummary[]> {
+  return invoke<SkillSummary[]>("list_skills", {
+    workspacePath,
+    sourceUrl: sourceUrl ?? null,
+  })
 }
 
-export const listWorkspaceSkills = () =>
-  invoke<WorkspaceSkill[]>("list_workspace_skills")
+export const listWorkspaceSkills = (sourceUrl?: string | null) =>
+  invoke<WorkspaceSkill[]>("list_workspace_skills", { sourceUrl: sourceUrl ?? null })
 
 // --- GitHub Import ---
 
@@ -401,14 +434,8 @@ export const setWorkspaceSkillPurpose = (skillId: string, purpose: string | null
 export const importMarketplaceToLibrary = (skillPaths: string[], sourceUrl: string, metadataOverrides?: Record<string, SkillMetadataOverride>) =>
   invoke<MarketplaceImportResult[]>("import_marketplace_to_library", { sourceUrl, skillPaths, metadataOverrides: metadataOverrides ?? null })
 
-export const checkMarketplaceUpdates = (
-  owner: string,
-  repo: string,
-  branch: string,
-  subpath: string | undefined,
-  sourceUrl: string,
-): Promise<MarketplaceUpdateResult> =>
-  invoke<MarketplaceUpdateResult>("check_marketplace_updates", { owner, repo, branch, subpath: subpath ?? null, sourceUrl })
+export const checkMarketplaceUpdates = (): Promise<MarketplaceUpdateResult> =>
+  invoke<MarketplaceUpdateResult>("check_marketplace_updates")
 
 export const checkSkillCustomized = (skillName: string): Promise<boolean> =>
   invoke<boolean>("check_skill_customized", { skillName })
@@ -438,13 +465,34 @@ export const sendRefineMessage = (
   command?: string,
 ) => invoke<string>("send_refine_message", { sessionId, userMessage, workspacePath, targetFiles: targetFiles ?? null, command: command ?? null })
 
+export const materializeRefineValidationOutput = (
+  skillName: string,
+  workspacePath: string,
+  structuredOutput: unknown,
+) => invoke<void>("materialize_refine_validation_output", {
+  skillName,
+  workspacePath,
+  structuredOutput,
+})
+
 // --- Answer Evaluation (Transition Gate) ---
 
-export interface PerQuestionVerdict {
-  question_id: string;
-  verdict: "clear" | "needs_refinement" | "not_answered" | "vague" | "contradictory";
-  contradicts?: string;
-}
+export type PerQuestionVerdict =
+  | {
+    question_id: string;
+    verdict: "clear" | "needs_refinement" | "not_answered";
+  }
+  | {
+    question_id: string;
+    verdict: "vague";
+    reason: string;
+  }
+  | {
+    question_id: string;
+    verdict: "contradictory";
+    reason: string;
+    contradicts: string;
+  };
 
 export interface AnswerEvaluation {
   verdict: "sufficient" | "mixed" | "insufficient";
@@ -461,6 +509,44 @@ export const runAnswerEvaluator = (
   skillName: string,
   workspacePath: string,
 ) => invoke<string>("run_answer_evaluator", { skillName, workspacePath });
+
+export const materializeAnswerEvaluationOutput = (
+  skillName: string,
+  workspacePath: string,
+  structuredOutput: unknown,
+) => invoke<void>("materialize_answer_evaluation_output", {
+  skillName,
+  workspacePath,
+  structuredOutput,
+});
+
+export const getClarificationsContent = (
+  skillName: string,
+  workspacePath: string,
+) => invoke<string>("get_clarifications_content", { skillName, workspacePath });
+
+export const saveClarificationsContent = (
+  skillName: string,
+  workspacePath: string,
+  content: string,
+) => invoke<void>("save_clarifications_content", { skillName, workspacePath, content });
+
+export const getDecisionsContent = (
+  skillName: string,
+  workspacePath: string,
+) => invoke<string>("get_decisions_content", { skillName, workspacePath });
+
+export const saveDecisionsContent = (
+  skillName: string,
+  workspacePath: string,
+  content: string,
+) => invoke<void>("save_decisions_content", { skillName, workspacePath, content });
+
+export const getContextFileContent = (
+  skillName: string,
+  workspacePath: string,
+  fileName: string,
+) => invoke<string>("get_context_file_content", { skillName, workspacePath, fileName });
 
 export const autofillClarifications = (
   skillName: string,
@@ -490,6 +576,21 @@ export const prepareSkillTest = (workspacePath: string, skillName: string) =>
 
 export const cleanupSkillTest = (testId: string) =>
   invoke<void>("cleanup_skill_test", { testId })
+
+export const buildTestPlanPrompt = (userPrompt: string) =>
+  invoke<string>("build_test_plan_prompt", { userPrompt })
+
+export const buildTestEvaluatorPrompt = (
+  userPrompt: string,
+  skillName: string,
+  withPlanText: string,
+  withoutPlanText: string,
+) => invoke<string>("build_test_evaluator_prompt", {
+  userPrompt,
+  skillName,
+  withPlanText,
+  withoutPlanText,
+})
 
 // --- File Import ---
 
